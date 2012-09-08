@@ -1,4 +1,4 @@
-yii-bootstrap-editable
+Yii-bootstrap-editable
 ======================
 
-Yii extension for bootstrap-editable plugin (coming soon..)
+Yii extension for Bootstrap-editable plugin
