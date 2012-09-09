@@ -13,7 +13,7 @@
  
 class EditableField extends CWidget
 {
-    // for all types
+    //for all types
     public $model = null;
     public $attribute = null;
     public $type = null;
@@ -23,13 +23,17 @@ class EditableField extends CWidget
     public $text = null; //will be used as content
     public $value = null;
     public $placement = null;
+    public $inputclass = null;
 
-    // for select
+    //for text & textarea
+    public $placeholder = null;
+    
+    //for select
     public $source = array();
     public $autotext = null;
     public $prepend = null;
 
-    // for date
+    //for date
     public $format = null;
     public $language = null;
     public $weekStart = null;
@@ -39,9 +43,14 @@ class EditableField extends CWidget
     public $validate = null;
     public $success = null;
     public $error = null;
+    
+    //events
+    public $onInit = null;
+    public $onUpdate = null;
 
     //js options
     public $options = array();
+    
     //html options
     public $htmlOptions = array();
 
@@ -52,9 +61,7 @@ class EditableField extends CWidget
     public $enabled = null;
 
     public function init()
-    {   //todo: добавить onUpdate !!!
-        parent::init();
-
+    {   
         if (!$this->model) {
             throw new CException('Parameter "model" should be provided for Editable');
         }
@@ -64,6 +71,8 @@ class EditableField extends CWidget
         if (!$this->model->hasAttribute($this->attribute)) {
             throw new CException('Model "'.get_class($this->model).'" does not have attribute "'.$this->attribute.'"');
         }        
+ 
+        parent::init();
                 
         if ($this->type === null) {
             $this->type = 'text';
@@ -75,9 +84,8 @@ class EditableField extends CWidget
             }
         }
 
-        //generate text (except select)
+        //generate text from model attribute (for all types except 'select'. For select autotext option assumed or will be defined manually)
         if ($this->text === null && $this->type != 'select') {
-            //autotext option assumed --> do not set text from model attribute
             $this->text = $this->model->getAttribute($this->attribute);
         }
 
@@ -85,12 +93,13 @@ class EditableField extends CWidget
         if($this->enabled === null) {
             $this->enabled = $this->model->isAttributeSafe($this->attribute);
         }
+        
         //if not enabled --> just print text        
         if (!$this->enabled) {
             return;
         }
 
-        //lang: take from config is exists
+        //language: use config if not defined directly
         if ($this->language === null && yii::app()->language) {
             $this->language = yii::app()->language;
         }
@@ -107,32 +116,6 @@ class EditableField extends CWidget
         $this->buildHtmlOptions();
         $this->buildJsOptions();
         $this->registerAssets();
-    }
-
-    public function run()
-    {
-        if($this->enabled) {
-            $this->registerClientScript();
-            $this->renderLink();
-        } else {
-            $this->renderText();
-        }
-    }
-
-    public function renderLink()
-    {
-        echo CHtml::openTag('a', $this->htmlOptions);
-        $this->renderText();
-        echo CHtml::closeTag('a');
-    }
-
-    public function renderText()
-    {
-        $encodedText = $this->encode ? CHtml::encode($this->text) : $this->text;
-        if($this->type == 'textarea') {
-             $encodedText = preg_replace('/\r?\n/', '<br>', $encodedText);
-        }
-        echo $encodedText;
     }
 
     public function buildHtmlOptions()
@@ -170,8 +153,18 @@ class EditableField extends CWidget
         if ($this->placement) {
             $options['placement'] = $this->placement;
         }
+        
+        if ($this->inputclass) {
+            $options['inputclass'] = $this->inputclass;
+        }        
 
         switch ($this->type) {
+            case 'text':
+            case 'textarea':
+                if ($this->placeholder) {
+                    $options['placeholder'] = $this->placeholder;
+                }
+                break;
             case 'select':
                 if ($this->source) {
                     $options['source'] = $this->source;
@@ -197,14 +190,15 @@ class EditableField extends CWidget
                     $options['startView'] = $this->startView;
                 }
                 break;
-            case 'typeahead':
-                if ($this->source) {
-                    $options['source'] = $this->source;
-                }
-                break;
         }
 
         //methods
+        foreach(array('validate', 'success', 'error') as $event) {
+            if($this->$event!==null) {
+                $options[$event]=(strpos($this->$event, 'js:') !== 0 ? 'js:' : '') . $this->$event;
+            }
+        }        
+        
         if ($this->validate !== null) {
             $options['validate'] = (strpos($this->validate, 'js:') !== 0 ? 'js:' : '') . $this->validate;
         }
@@ -221,8 +215,29 @@ class EditableField extends CWidget
 
     public function registerClientScript()
     {
-        $options = CJavaScript::jsonEncode($this->options);
-        Yii::app()->getClientScript()->registerScript(__CLASS__ . '#' . $this->id, "$('a[rel={$this->htmlOptions['rel']}]').editable($options)");
+        $script = "$('a[rel={$this->htmlOptions['rel']}]')";
+          
+        //attach 'init' event
+        if ($this->onInit) {
+            // CJavaScriptExpression appeared only in 1.1.11, will turn to it later
+            //$event = ($this->onInit instanceof CJavaScriptExpression) ? $this->onInit : new CJavaScriptExpression($this->onInit);
+            $event = (strpos($this->onInit, 'js:') !== 0 ? 'js:' : '') . $this->onInit;
+            $script .= ".on('init', ".CJavaScript::encode($event).")";
+        }
+
+        //apply editable
+        $options = CJavaScript::encode($this->options);        
+        $script .= ".editable($options)";
+        
+        //attach 'update' event
+        if ($this->onUpdate) {
+            $event = (strpos($this->onUpdate, 'js:') !== 0 ? 'js:' : '') . $this->onUpdate;
+            $script .= "\n.on('update', ".CJavaScript::encode($event).")";
+        } 
+        
+        $script .= ";";
+        
+        Yii::app()->getClientScript()->registerScript(__CLASS__ . '#' . $this->id, $script);
     }
 
 
@@ -245,6 +260,32 @@ class EditableField extends CWidget
         }
     }
 
+    public function run()
+    {
+        if($this->enabled) {
+            $this->registerClientScript();
+            $this->renderLink();
+        } else {
+            $this->renderText();
+        }
+    }
+
+    public function renderLink()
+    {
+        echo CHtml::openTag('a', $this->htmlOptions);
+        $this->renderText();
+        echo CHtml::closeTag('a');
+    }
+
+    public function renderText()
+    {
+        $encodedText = $this->encode ? CHtml::encode($this->text) : $this->text;
+        if($this->type == 'textarea') {
+             $encodedText = preg_replace('/\r?\n/', '<br>', $encodedText);
+        }
+        echo $encodedText;
+    }    
+    
     public function getSelector()
     {
         return get_class($this->model) . '_' . $this->attribute . ($this->model->primaryKey ? '_' . $this->model->primaryKey : '');
