@@ -238,6 +238,8 @@ class EditableField extends CWidget
         $script .= ";";
         
         Yii::app()->getClientScript()->registerScript(__CLASS__ . '#' . $this->id, $script);
+        
+        return $script;
     }
 
 

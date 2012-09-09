@@ -33,13 +33,7 @@ class EditableColumn extends CDataColumn
 
         parent::init();
 
-        //todo: change original onajaxupdate to work with ajax
-        /*
-        $this->grid->afterAjaxUpdate = 'js: function(id, data) {
-           alert(2);
-        }';
-        */
-
+        $this->attachAjaxUpdateEvent();
     }
 
     protected function renderDataCellContent($row, $data)
@@ -55,24 +49,47 @@ class EditableColumn extends CDataColumn
             'encode'    => false,
         ));
 
-        $cell = $this->grid->controller->createWidget('EditableField', $options);
+        $editable = $this->grid->controller->createWidget('EditableField', $options);
 
         //if not enabled --> just render text
         if (array_key_exists('enabled', $this->editable) && $this->editable['enabled'] === false) {
-            $cell->renderText();
+            $editable->renderText();
             return;
         }
 
-        //make selector non unique for all cells
-        $selector = get_class($cell->model) . '_' . $cell->attribute;
-        $cell->htmlOptions['rel'] = $selector;
+        //manually make selector non unique to match all cells in column
+        $selector = get_class($editable->model) . '_' . $editable->attribute;
+        $editable->htmlOptions['rel'] = $selector;
 
-        $cell->renderLink();
+        $editable->renderLink();
 
+        //manually render client script once
         if (!$this->isScriptRendered) {
-            $options = CJavaScript::jsonEncode($cell->options);
-            Yii::app()->getClientScript()->registerScript(__CLASS__ . '#' . $this->id, "$('#{$this->grid->id} a[rel={$selector}]').editable($options);");
+            $script = $editable->registerClientScript();
+            Yii::app()->getClientScript()->registerScript(__CLASS__ . '#' . $selector.'-event', '
+                $("#'.$this->grid->id.'").parent().on("ajaxUpdate.yiiGridView", "#'.$this->grid->id.'", function() {'.$script.'});
+            ');
             $this->isScriptRendered = true;
         }
+    }
+    
+    protected function attachAjaxUpdateEvent()
+    {
+        $trigger = '$("#"+id).trigger("ajaxUpdate");';
+        
+        //check if trigger already inserted (by another column)
+        if(strpos($this->grid->afterAjaxUpdate, $trigger) !== false) return;
+        
+        //inserting trigger
+        if(strlen($this->grid->afterAjaxUpdate)) {
+            $orig = $this->grid->afterAjaxUpdate;
+            if(strpos($orig, 'js:')===0) $orig = substr($orig,3);
+            $orig = "\n($orig).apply(this, arguments);";
+        } else {
+            $orig = '';
+        }
+        $this->grid->afterAjaxUpdate = "js: function(id, data) {
+            $trigger $orig
+        }";
     }
 }
