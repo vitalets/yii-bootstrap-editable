@@ -1,5 +1,16 @@
 <?php
-
+/**
+ * EditableDetailView class file.
+ * 
+ * This widget makes editable several attributes of single model, shown as name-value table
+ * 
+ * @author Vitaliy Potapov <noginsk@rambler.ru>
+ * @link https://github.com/vitalets/yii-bootstrap-editable
+ * @copyright Copyright &copy; Vitaliy Potapov 2012
+ * @license http://www.opensource.org/licenses/bsd-license.php New BSD License
+ * @version 0.1.0
+ */
+ 
 Yii::import('ext.editable.EditableField');
 Yii::import('zii.widgets.CDetailView');
 

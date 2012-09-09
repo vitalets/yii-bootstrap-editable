@@ -1,8 +1,16 @@
 <?php
-
 /**
- * Widget for Bootstrap Editable item
+ * EditableField class file.
+ * 
+ * This widget makes editable single attribute of model
+ * 
+ * @author Vitaliy Potapov <noginsk@rambler.ru>
+ * @link https://github.com/vitalets/yii-bootstrap-editable
+ * @copyright Copyright &copy; Vitaliy Potapov 2012
+ * @license http://www.opensource.org/licenses/bsd-license.php New BSD License
+ * @version 0.1.0
  */
+ 
 class EditableField extends CWidget
 {
     // for all types
@@ -225,14 +233,14 @@ class EditableField extends CWidget
             $bootstrap->registerCorePlugins(); //enable bootstrap js if needed
         }
 
-        $assetsUrl = Yii::app()->getAssetManager()->publish(Yii::getPathOfAlias('ext.editable.assets.bootstrap-editable'), false, 1); //publish excluding datepicker locales
+        $assetsUrl = Yii::app()->getAssetManager()->publish(Yii::getPathOfAlias('ext.editable.assets'), false, 1); //publish excluding datepicker locales
         Yii::app()->getClientScript()->registerCssFile($assetsUrl . '/css/bootstrap-editable.css');
         Yii::app()->clientScript->registerScriptFile($assetsUrl . '/js/bootstrap-editable.js', CClientScript::POS_END);
 
         //include locale for datepicker
         if ($this->type == 'date' && $this->language && substr($this->language, 0, 2) != 'en') {
              //todo: check compare dp locale name with yii's
-             $localesUrl = Yii::app()->getAssetManager()->publish(Yii::getPathOfAlias('ext.editable.assets.bootstrap-editable.js.locales'));
+             $localesUrl = Yii::app()->getAssetManager()->publish(Yii::getPathOfAlias('ext.editable.assets.js.locales'));
              Yii::app()->clientScript->registerScriptFile($localesUrl . '/bootstrap-datepicker.'. str_replace('_', '-', $this->language).'.js', CClientScript::POS_END);
         }
     }
