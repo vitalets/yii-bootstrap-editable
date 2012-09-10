@@ -8,7 +8,7 @@
  * @link https://github.com/vitalets/yii-bootstrap-editable
  * @copyright Copyright &copy; Vitaliy Potapov 2012
  * @license http://www.opensource.org/licenses/bsd-license.php New BSD License
- * @version 0.1.0
+ * @version 0.0.0
  */
 
 Yii::import('ext.editable.EditableField');
@@ -73,11 +73,18 @@ class EditableColumn extends CDataColumn
         }
     }
     
+   /**
+   * Unfortunatly Yii does not support custom js events in it's widgets.
+   * So we need to invoke it manually to ensure update of editables on grid ajax update.
+   * 
+   * issue in Yii github: https://github.com/yiisoft/yii/issues/1313
+   * 
+   */
     protected function attachAjaxUpdateEvent()
     {
         $trigger = '$("#"+id).trigger("ajaxUpdate");';
         
-        //check if trigger already inserted (by another column)
+        //check if trigger already inserted by another column
         if(strpos($this->grid->afterAjaxUpdate, $trigger) !== false) return;
         
         //inserting trigger

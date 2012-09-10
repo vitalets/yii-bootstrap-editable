@@ -8,7 +8,7 @@
  * @link https://github.com/vitalets/yii-bootstrap-editable
  * @copyright Copyright &copy; Vitaliy Potapov 2012
  * @license http://www.opensource.org/licenses/bsd-license.php New BSD License
- * @version 0.1.0
+ * @version 0.0.0
  */
  
 class EditableField extends CWidget
@@ -34,7 +34,7 @@ class EditableField extends CWidget
     public $prepend = null;
 
     //for date
-    public $format = null;
+    public $format = 'dd/mm/yyyy';
     public $language = null;
     public $weekStart = null;
     public $startView = null;
@@ -84,9 +84,34 @@ class EditableField extends CWidget
             }
         }
 
+        /*
+        * unfortunatly datepicker's format does not match Yii locale dateFormat
+        * and we cannot take format from application locale
+        * 
+        * see http://www.unicode.org/reports/tr35/#Date_Format_Patterns
+        * 
+        if($this->type == 'date' && $this->format === null) {
+            $this->format = Yii::app()->locale->getDateFormat();
+        }
+        */
+        
         //generate text from model attribute (for all types except 'select'. For select autotext option assumed or will be defined manually)
         if ($this->text === null && $this->type != 'select') {
             $this->text = $this->model->getAttribute($this->attribute);
+             
+            //if date comes as object, format it to string
+            if($this->type == 'date' && $this->text instanceOf DateTime) {
+                /* 
+                * unfortunatly datepicker's format does not match Yii locale dateFormat,
+                * we need replacements below to convert date correctly
+                */
+                $count = 0;
+                $format = str_replace('MM', 'MMMM', $this->format, $count);
+                if(!$count) $format = str_replace('M', 'MMM', $format, $count);
+                if(!$count) $format = str_replace('m', 'M', $format);
+                
+                $this->text = Yii::app()->dateFormatter->format($format, $this->text->getTimestamp()); 
+            }
         }
 
         //if enabled not defined directly, set it to true only for safe attributes
