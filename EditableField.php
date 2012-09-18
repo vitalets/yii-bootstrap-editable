@@ -48,6 +48,7 @@ class EditableField extends CWidget
     //events
     public $onInit = null;
     public $onUpdate = null;
+    public $onRender = null;
 
     //js options
     public $options = array();
@@ -237,16 +238,6 @@ class EditableField extends CWidget
                 $options[$event]=(strpos($this->$event, 'js:') !== 0 ? 'js:' : '') . $this->$event;
             }
         }        
-        
-        if ($this->validate !== null) {
-            $options['validate'] = (strpos($this->validate, 'js:') !== 0 ? 'js:' : '') . $this->validate;
-        }
-        if ($this->success !== null) {
-            $options['success'] = (strpos($this->success, 'js:') !== 0 ? 'js:' : '') . $this->success;
-        }
-        if ($this->error !== null) {
-            $options['error'] = (strpos($this->error, 'js:') !== 0 ? 'js:' : '') . $this->error;
-        }
 
         //merging options
         $this->options = CMap::mergeArray($this->options, $options);
@@ -263,6 +254,12 @@ class EditableField extends CWidget
             $event = (strpos($this->onInit, 'js:') !== 0 ? 'js:' : '') . $this->onInit;
             $script .= ".on('init', ".CJavaScript::encode($event).")";
         }
+        
+        //attach 'render' event
+        if ($this->onRender) {
+            $event = (strpos($this->onRender, 'js:') !== 0 ? 'js:' : '') . $this->onRender;
+            $script .= ".on('render', ".CJavaScript::encode($event).")";
+        }        
 
         //apply editable
         $options = CJavaScript::encode($this->options);        
