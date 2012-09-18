@@ -24,17 +24,18 @@ class EditableField extends CWidget
     public $value = null;
     public $placement = null;
     public $inputclass = null;
+    public $autotext = null;
 
     //for text & textarea
     public $placeholder = null;
     
     //for select
     public $source = array();
-    public $autotext = null;
     public $prepend = null;
 
     //for date
-    public $format = 'dd/mm/yyyy';
+    public $format = null;
+    public $viewformat = null;
     public $language = null;
     public $weekStart = null;
     public $startView = null;
@@ -95,23 +96,11 @@ class EditableField extends CWidget
         }
         */
         
-        //generate text from model attribute (for all types except 'select'. For select autotext option assumed or will be defined manually)
-        if ($this->text === null && $this->type != 'select') {
+        /* generate text from model attribute (for all types except 'select'. 
+        *  For select/date autotext will be applied)
+        */ 
+        if ($this->text === null && $this->type != 'select' && $this->type != 'date') {
             $this->text = $this->model->getAttribute($this->attribute);
-             
-            //if date comes as object, format it to string
-            if($this->type == 'date' && $this->text instanceOf DateTime) {
-                /* 
-                * unfortunatly datepicker's format does not match Yii locale dateFormat,
-                * we need replacements below to convert date correctly
-                */
-                $count = 0;
-                $format = str_replace('MM', 'MMMM', $this->format, $count);
-                if(!$count) $format = str_replace('M', 'MMM', $format, $count);
-                if(!$count) $format = str_replace('m', 'M', $format);
-                
-                $this->text = Yii::app()->dateFormatter->format($format, $this->text->getTimestamp()); 
-            }
         }
 
         //if enabled not defined directly, set it to true only for safe attributes
@@ -124,7 +113,7 @@ class EditableField extends CWidget
             return;
         }
 
-        //language: use config if not defined directly
+        //language: use config's value if not defined directly
         if ($this->language === null && yii::app()->language) {
             $this->language = yii::app()->language;
         }
@@ -157,6 +146,27 @@ class EditableField extends CWidget
             $this->value = $this->model->getAttribute($this->attribute);
             $this->htmlOptions['data-value'] = $this->value;
         }
+        
+        //for date we use 'format' to put it into value (if text not defined)
+        if ($this->type == 'date' && $this->text === null) {
+            $this->value = $this->model->getAttribute($this->attribute);
+            
+            //if date comes as object, format it to string
+            if($this->value instanceOf DateTime) {
+                /* 
+                * unfortunatly datepicker's format does not match Yii locale dateFormat,
+                * we need replacements below to convert date correctly
+                */
+                $count = 0;
+                $format = str_replace('MM', 'MMMM', $this->format, $count);
+                if(!$count) $format = str_replace('M', 'MMM', $format, $count);
+                if(!$count) $format = str_replace('m', 'M', $format);
+                
+                $this->value = Yii::app()->dateFormatter->format($format, $this->value->getTimestamp()); 
+            }            
+            
+            $this->htmlOptions['data-value'] = $this->value;
+        }        
 
         //merging options
         $this->htmlOptions = CMap::mergeArray($this->htmlOptions, $htmlOptions);
@@ -181,7 +191,11 @@ class EditableField extends CWidget
         
         if ($this->inputclass) {
             $options['inputclass'] = $this->inputclass;
-        }        
+        }    
+        
+        if ($this->autotext) {
+            $options['autotext'] = $this->autotext;
+        }            
 
         switch ($this->type) {
             case 'text':
@@ -194,9 +208,6 @@ class EditableField extends CWidget
                 if ($this->source) {
                     $options['source'] = $this->source;
                 }
-                if ($this->autotext) {
-                    $options['autotext'] = $this->autotext;
-                }
                 if ($this->prepend) {
                     $options['prepend'] = $this->prepend;
                 }
@@ -205,7 +216,10 @@ class EditableField extends CWidget
                 if ($this->format) {
                     $options['format'] = $this->format;
                 }
-                if ($this->language) {
+                if ($this->viewformat) {
+                    $options['viewformat'] = $this->viewformat;
+                }                
+                if ($this->language && substr($this->language, 0, 2) != 'en') {
                     $options['datepicker']['language'] = $this->language;
                 }
                 if ($this->weekStart !== null) {
@@ -305,7 +319,7 @@ class EditableField extends CWidget
     }
 
     public function renderText()
-    {
+    {   
         $encodedText = $this->encode ? CHtml::encode($this->text) : $this->text;
         if($this->type == 'textarea') {
              $encodedText = preg_replace('/\r?\n/', '<br>', $encodedText);
