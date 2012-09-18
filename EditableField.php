@@ -100,7 +100,7 @@ class EditableField extends CWidget
         /* generate text from model attribute (for all types except 'select'. 
         *  For select/date autotext will be applied)
         */ 
-        if ($this->text === null && $this->type != 'select' && $this->type != 'date') {
+        if (!strlen($this->text) && $this->type != 'select' && $this->type != 'date') {
             $this->text = $this->model->getAttribute($this->attribute);
         }
 
@@ -149,7 +149,7 @@ class EditableField extends CWidget
         }
         
         //for date we use 'format' to put it into value (if text not defined)
-        if ($this->type == 'date' && $this->text === null) {
+        if ($this->type == 'date' && !strlen($this->text)) {
             $this->value = $this->model->getAttribute($this->attribute);
             
             //if date comes as object, format it to string

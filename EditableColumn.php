@@ -38,17 +38,20 @@ class EditableColumn extends CDataColumn
 
     protected function renderDataCellContent($row, $data)
     {
-        ob_start();
-        parent::renderDataCellContent($row, $data);
-        $text = ob_get_clean();
-
         $options = CMap::mergeArray($this->editable, array(
             'model'     => $data,
             'attribute' => $this->name,
-            'text'      => $text,
-            'encode'    => false,
         ));
-
+        
+        //if value defined for column --> use it as editable text
+        if(strlen($this->value)) {
+            ob_start();
+            parent::renderDataCellContent($row, $data);
+            $text = ob_get_clean();
+            $options['text'] = $text;
+            $options['encode'] = false;
+        }
+       
         $editable = $this->grid->controller->createWidget('EditableField', $options);
 
         //if not enabled --> just render text
@@ -74,7 +77,7 @@ class EditableColumn extends CDataColumn
     }
     
    /**
-   * Unfortunatly Yii does not support custom js events in it's widgets.
+   * Unfortunatly Yii does not support custom js events in it's widgets. 
    * So we need to invoke it manually to ensure update of editables on grid ajax update.
    * 
    * issue in Yii github: https://github.com/yiisoft/yii/issues/1313
