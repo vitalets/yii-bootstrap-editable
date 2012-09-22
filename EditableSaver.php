@@ -122,10 +122,11 @@ class EditableSaver extends CComponent
         //save
         if ($this->beforeUpdate()) {
             //saving (only chnaged attributes)
-            if (!$this->model->save(false, $this->changedAttributes)) {
+            if ($this->model->save(false, $this->changedAttributes)) {
+                $this->afterUpdate();
+            } else {
                 $this->error(Yii::t('editable', 'Error while saving record!')); 
             }
-            $this->afterUpdate();
         } else {
             $firstError = reset($this->model->getErrors());
             $this->error($firstError[0]);
