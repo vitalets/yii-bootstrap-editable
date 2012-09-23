@@ -32,12 +32,15 @@ class EditableColumn extends CDataColumn
         }
 
         parent::init();
+        
+        if($this->isEditable($this->grid->dataProvider->model)) {
+            $this->attachAjaxUpdateEvent();
+        }
     }
 
     protected function renderDataCellContent($row, $data)
     {
-        //if attribute not safe or editable option == false --> no editable applied
-        if(!$data->isAttributeSafe($this->name) || (array_key_exists('enabled', $this->editable) && $this->editable['enabled'] === false)) {
+        if(!$this->isEditable($data)) {
             parent::renderDataCellContent($row, $data);
             return; 
         }
@@ -66,7 +69,6 @@ class EditableColumn extends CDataColumn
 
         //manually render client script (one for all cells in column)
         if (!$this->isScriptRendered) {
-            $this->attachAjaxUpdateEvent();
             $script = $editable->registerClientScript();
             Yii::app()->getClientScript()->registerScript(__CLASS__ . '#' . $selector.'-event', '
                 $("#'.$this->grid->id.'").parent().on("ajaxUpdate.yiiGridView", "#'.$this->grid->id.'", function() {'.$script.'});
@@ -100,5 +102,15 @@ class EditableColumn extends CDataColumn
         $this->grid->afterAjaxUpdate = "js: function(id, data) {
             $trigger $orig
         }";
+    }
+    
+    /**
+    * determines wether column currently editable or not
+    * 
+    * @param mixed $model
+    */
+    protected function isEditable($model)
+    {
+         return $model->isAttributeSafe($this->name) && (!array_key_exists('enabled', $this->editable) || $this->editable['enabled'] === true);
     }
 }
