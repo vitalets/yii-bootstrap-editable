@@ -49,6 +49,8 @@ class EditableField extends CWidget
     public $onInit = null;
     public $onUpdate = null;
     public $onRender = null;
+    public $onShown = null;
+    public $onHidden = null;
 
     //js options
     public $options = array();
@@ -247,31 +249,20 @@ class EditableField extends CWidget
     {
         $script = "$('a[rel={$this->htmlOptions['rel']}]')";
           
-        //attach 'init' event
-        if ($this->onInit) {
-            // CJavaScriptExpression appeared only in 1.1.11, will turn to it later
-            //$event = ($this->onInit instanceof CJavaScriptExpression) ? $this->onInit : new CJavaScriptExpression($this->onInit);
-            $event = (strpos($this->onInit, 'js:') !== 0 ? 'js:' : '') . $this->onInit;
-            $script .= ".on('init', ".CJavaScript::encode($event).")";
+        //attach events
+        foreach(array('init', 'update', 'render', 'shown', 'hidden') as $event) {
+            $property = 'on'.ucfirst($event); 
+            if ($this->$property) {
+                // CJavaScriptExpression appeared only in 1.1.11, will turn to it later
+                //$event = ($this->onInit instanceof CJavaScriptExpression) ? $this->onInit : new CJavaScriptExpression($this->onInit);
+                $eventJs = (strpos($this->$property, 'js:') !== 0 ? 'js:' : '') . $this->$property;
+                $script .= "\n.on('".$event."', ".CJavaScript::encode($eventJs).")";
+            }
         }
-        
-        //attach 'render' event
-        if ($this->onRender) {
-            $event = (strpos($this->onRender, 'js:') !== 0 ? 'js:' : '') . $this->onRender;
-            $script .= ".on('render', ".CJavaScript::encode($event).")";
-        }        
 
         //apply editable
         $options = CJavaScript::encode($this->options);        
-        $script .= ".editable($options)";
-        
-        //attach 'update' event
-        if ($this->onUpdate) {
-            $event = (strpos($this->onUpdate, 'js:') !== 0 ? 'js:' : '') . $this->onUpdate;
-            $script .= "\n.on('update', ".CJavaScript::encode($event).")";
-        } 
-        
-        $script .= ";";
+        $script .= ".editable($options);";
         
         Yii::app()->getClientScript()->registerScript(__CLASS__ . '#' . $this->id, $script);
         
