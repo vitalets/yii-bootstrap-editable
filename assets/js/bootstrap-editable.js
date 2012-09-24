@@ -211,6 +211,9 @@
                
                 //hide popover on external click
                 $(document).on('click.editable', $.proxy(this.hide, this));
+                
+                //trigger 'shown' event
+                this.$element.trigger('shown', this);
             }, this));
         },
 
@@ -327,6 +330,9 @@
             if (this.settings.enablefocus || this.$element.get(0) !== this.$toggle.get(0)) {
                 this.$toggle.focus();
             }
+            
+            //trigger 'hidden' event
+            this.$element.trigger('hidden', this);
         },
 
         /**
