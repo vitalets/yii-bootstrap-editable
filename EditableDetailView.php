@@ -8,7 +8,7 @@
  * @link https://github.com/vitalets/yii-bootstrap-editable
  * @copyright Copyright &copy; Vitaliy Potapov 2012
  * @license http://www.opensource.org/licenses/bsd-license.php New BSD License
- * @version 0.1.0
+ * @version 1.0.0
  */
  
 Yii::import('ext.editable.EditableField');
