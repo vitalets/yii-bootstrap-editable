@@ -8,7 +8,7 @@
  * @link https://github.com/vitalets/yii-bootstrap-editable
  * @copyright Copyright &copy; Vitaliy Potapov 2012
  * @license http://www.opensource.org/licenses/bsd-license.php New BSD License
- * @version 0.1.0
+ * @version 1.0.0
  */
  
 class EditableSaver extends CComponent
@@ -122,10 +122,11 @@ class EditableSaver extends CComponent
         //save
         if ($this->beforeUpdate()) {
             //saving (only chnaged attributes)
-            if (!$this->model->save(false, $this->changedAttributes)) {
+            if ($this->model->save(false, $this->changedAttributes)) {
+                $this->afterUpdate();
+            } else {
                 $this->error(Yii::t('editable', 'Error while saving record!')); 
             }
-            $this->afterUpdate();
         } else {
             $firstError = reset($this->model->getErrors());
             $this->error($firstError[0]);

@@ -8,7 +8,7 @@
  * @link https://github.com/vitalets/yii-bootstrap-editable
  * @copyright Copyright &copy; Vitaliy Potapov 2012
  * @license http://www.opensource.org/licenses/bsd-license.php New BSD License
- * @version 0.1.0
+ * @version 1.0.0
  */
 
 Yii::import('ext.editable.EditableField');
@@ -32,30 +32,34 @@ class EditableColumn extends CDataColumn
         }
 
         parent::init();
-
-        $this->attachAjaxUpdateEvent();
+        
+        if($this->isEditable($this->grid->dataProvider->model)) {
+            $this->attachAjaxUpdateEvent();
+        }
     }
 
     protected function renderDataCellContent($row, $data)
     {
-        ob_start();
-        parent::renderDataCellContent($row, $data);
-        $text = ob_get_clean();
-
+        if(!$this->isEditable($data)) {
+            parent::renderDataCellContent($row, $data);
+            return; 
+        }
+        
         $options = CMap::mergeArray($this->editable, array(
             'model'     => $data,
             'attribute' => $this->name,
-            'text'      => $text,
-            'encode'    => false,
         ));
-
-        $editable = $this->grid->controller->createWidget('EditableField', $options);
-
-        //if not enabled --> just render text
-        if (array_key_exists('enabled', $this->editable) && $this->editable['enabled'] === false) {
-            $editable->renderText();
-            return;
+        
+        //if value defined for column --> use it as element text
+        if(strlen($this->value)) {
+            ob_start();
+            parent::renderDataCellContent($row, $data);
+            $text = ob_get_clean();
+            $options['text'] = $text;
+            $options['encode'] = false;
         }
+       
+        $editable = $this->grid->controller->createWidget('EditableField', $options);
 
         //manually make selector non unique to match all cells in column
         $selector = get_class($editable->model) . '_' . $editable->attribute;
@@ -63,7 +67,7 @@ class EditableColumn extends CDataColumn
 
         $editable->renderLink();
 
-        //manually render client script once
+        //manually render client script (one for all cells in column)
         if (!$this->isScriptRendered) {
             $script = $editable->registerClientScript();
             Yii::app()->getClientScript()->registerScript(__CLASS__ . '#' . $selector.'-event', '
@@ -74,7 +78,7 @@ class EditableColumn extends CDataColumn
     }
     
    /**
-   * Unfortunatly Yii does not support custom js events in it's widgets.
+   * Unfortunatly Yii yet does not support custom js events in it's widgets. 
    * So we need to invoke it manually to ensure update of editables on grid ajax update.
    * 
    * issue in Yii github: https://github.com/yiisoft/yii/issues/1313
@@ -98,5 +102,15 @@ class EditableColumn extends CDataColumn
         $this->grid->afterAjaxUpdate = "js: function(id, data) {
             $trigger $orig
         }";
+    }
+    
+    /**
+    * determines wether column currently editable or not
+    * 
+    * @param mixed $model
+    */
+    protected function isEditable($model)
+    {
+         return $model->isAttributeSafe($this->name) && (!array_key_exists('enabled', $this->editable) || $this->editable['enabled'] === true);
     }
 }

@@ -1,812 +1,957 @@
-/*! Bootstrap Editable - v1.1.2 
+/*! Bootstrap Editable - v1.1.4 
 * In-place editing with Bootstrap Form and Popover
 * https://github.com/vitalets/bootstrap-editable
 * Copyright (c) 2012 Vitaliy Potapov; Licensed MIT, GPL */
 
-(function( $ ) {
-   
-  //Editable object 
-  var Editable = function ( element, options ) {
-      var type, typeDefaults;
-      this.$element = $(element);
+(function ($) {
 
-      //if exists 'placement' or 'title' options, copy them to data attributes to aplly for popover 
-      if(options && options.placement && !this.$element.data('placement')) {
-          this.$element.attr('data-placement', options.placement);
-      }
-      if(options && options.title && !this.$element.data('original-title')) {
-          this.$element.attr('data-original-title', options.title);
-      }
-      
-     //detect type
-      type = (this.$element.data().type || (options && options.type) ||  $.fn.editable.defaults.type);
-      typeDefaults = ($.fn.editable.types[type]) ? $.fn.editable.types[type] : {};
-          
-      //apply options    
-      this.settings = $.extend({}, $.fn.editable.defaults, $.fn.editable.types.defaults, typeDefaults, options, this.$element.data());
-      
-      //store name
-      this.name = this.settings.name || this.$element.attr('id'); 
-      if(!this.name) {
-        $.error('You should define name (or id) for Editable element');     
-      }
-      
-      //if validate is map take only needed function
-      if(typeof this.settings.validate === 'object' && this.name in this.settings.validate) {
-          this.settings.validate = this.settings.validate[this.name];
-      }
-      
-      //set value from settings or by element text
-      if (this.settings.value === undefined || this.settings.value === null) {
-         this.settings.setValueByText.call(this);
-      } else {
-         this.value = this.settings.value; 
-      }
-      
-      //also storing last saved value (initially equals to value)
-      this.lastSavedValue = this.value;       
-      
-      //apply specific init() if defined
-      if(typeof this.settings.init === 'function') {
-          this.settings.init.call(this, options);
-      }
-      
-      //set toggle element
-      if(this.settings.toggle) {
-          this.$toggle = $(this.settings.toggle);
-          //insert in DOM if needed
-          if(!this.$toggle.parent().length) {
-              this.$element.after(this.$toggle);
-          }
-          //prevent tabstop on element
-          this.$element.attr('tabindex', -1);
-      } else {
-          this.$toggle = this.$element;
-          
-          //add editable class
-          this.$element.addClass('editable');          
-      }      
-    
-      //bind click event
-      this.$toggle.on('click', $.proxy(this.click, this));
-      
-      //show emptytext if visible text is empty
-      this.handleEmpty();
-      
-      //trigger 'init' event 
-      this.$element.trigger('init', this); 
-  };
-  
-  Editable.prototype = {
-     constructor: Editable,
-     
-     click: function(e) {
-          e.stopPropagation();
-          e.preventDefault();  
-          
-          if(!this.$element.data('popover')) { // for the first time render popover and show
-              this.$element.popover({
-                  trigger: 'manual',
-                  placement: 'top',
-                  content: this.settings.loading
-              }); 
-              
-              this.$element.data('popover').tip().addClass('editable-popover');
-          } 
-          
-          if(this.$element.data('popover').tip().is(':visible')) {
-             this.hide(); 
-          } else {
-             this.startShow();
-          }
-     },
-     
-     startShow: function () {
-          //hide all other popovers if shown
-          $('.popover').find('form').find('button.editable-cancel').click();
+    //Editable object
+    var Editable = function (element, options) {
+        var type, typeDefaults, doAutotext = false, valueSetByText = false;
+        this.$element = $(element);
 
-          //show popover
-          this.$element.popover('show');
-          this.$element.addClass('editable-open');  
-          this.errorOnRender = false;
-          this.settings.renderInput.call(this); 
-     },     
- 
-     endShow: function() {
-         var $tip = this.$element.data('popover').tip();
-             
-         //render content & input
-         this.$content = $(this.settings.formTemplate);
-         this.$content.find('div.control-group').prepend(this.$input);
-             
-         //show form
-         $tip.find('.popover-content p').append(this.$content);
-         
-         if(this.errorOnRender) {
-             this.$input.attr('disabled', true);
-             $tip.find('button.btn-primary').attr('disabled', true);
-             $tip.find('form').submit(function() {return false;}); 
-             //show error
-             this.enableContent(this.errorOnRender);
-         } else {
-             this.$input.removeAttr('disabled');
-             $tip.find('button.btn-primary').removeAttr('disabled');             
-             //bind form submit
-             $tip.find('form').submit($.proxy(this.submit, this));  
-             //show input (and hide loading)
-             this.enableContent();
-             //set input value            
-             this.settings.setInputValue.call(this);
-         }
-         
-         //bind popover hide on button
-         $tip.find('button.editable-cancel').click($.proxy(this.hide, this));          
-         
-         //bind popover hide on escape
-         var that = this;
-         $(document).on('keyup.editable', function(e) {
-             if(e.which === 27) {
-                 e.stopPropagation();
-                 that.hide();
-             }
-         });         
-     },
-              
-     submit: function(e) {
-          e.stopPropagation();
-          e.preventDefault();  
-          
-          var error, pk, params,
-              that = this,
-              value = this.settings.getInputValue.call(this);
+        //if exists 'placement' or 'title' options, copy them to data attributes to aplly for popover
+        if (options && options.placement && !this.$element.data('placement')) {
+            this.$element.attr('data-placement', options.placement);
+        }
+        if (options && options.title && !this.$element.data('original-title')) {
+            this.$element.attr('data-original-title', options.title);
+        }
 
-          //validation              
-          if(error = this.validate(value)) {
-              this.enableContent(error);
-              //TODO: find elegant way to exclude hardcode of types here
-              if(this.settings.type === 'text' || this.settings.type === 'textarea') {
-                  this.$input.focus();
-              }
-              return;
-          }
-         
-          //if value not changed --> simply close popover
-          /*jslint eqeqeq: false*/
-          if(value == this.value) {
-              this.hide();
-              return;
-          }
-          /*jslint eqeqeq: true*/
-          
-          //getting primary key
-          if(typeof this.settings.pk === 'function') {
-              pk = this.settings.pk.call(this.$element);
-          } else if(typeof this.settings.pk === 'string' && $(this.settings.pk).length === 1 && $(this.settings.pk).parent().length) { //pk is ID of existing element
-              pk = $(this.settings.pk).text();
-          } else {
-              pk = this.settings.pk;
-          }
-          var send = (this.settings.url !== undefined) && ((this.settings.send === 'always') || (this.settings.send === 'auto' && pk) || (this.settings.send === 'ifpk' /* deprecated */ && pk));
-          
-          if(send) { //send to server
-          
-              //try parse json in single quotes
-              this.settings.params = tryParseJson(this.settings.params, true);
-              
-              params = (typeof this.settings.params === 'string') ? {params: this.settings.params} : $.extend({}, this.settings.params);
-              params.name = this.name;                 
-              params.value = value;
-                
-              //hide form, show loading
-              this.enableLoading();
-                            
-              //adding name and pk    
-              if(pk) {
-                  params.pk = pk;   
-              }
+        //detect type
+        type = (this.$element.data().type || (options && options.type) || $.fn.editable.defaults.type);
+        typeDefaults = ($.fn.editable.types[type]) ? $.fn.editable.types[type] : {};
 
-              var url = (typeof this.settings.url === 'function') ? this.settings.url.call(this) : this.settings.url;
-              $.ajax({
-                  url: url, 
-                  data: params, 
-                  type: 'post',
-                  dataType: 'json',
-                  success: function(data) {
-                      //check response
-                      if(typeof that.settings.success === 'function' && (error = that.settings.success.apply(that, arguments))) {
-                          //show form with error message
-                          that.enableContent(error);
-                      } else {
-                          //set new value and text
-                          that.value = value;
-                          that.settings.setTextByValue.call(that);
-                          that.markAsSaved();
-                          that.handleEmpty();      
-                          that.hide();
-                          that.$element.trigger('update', that);                           
-                      }
-                  },
-                  error: function(xhr) {
-                      var msg = (typeof that.settings.error === 'function') ? that.settings.error.apply(that, arguments) : null;
-                      that.enableContent(msg || xhr.responseText || xhr.statusText); 
-                  }     
-              });
-          } else { //do not send to server   
-              //set new value and text             
-              this.value = value;
-              this.settings.setTextByValue.call(this);  
-              //to show that value modified but not saved 
-              this.markAsUnsaved();
-              this.handleEmpty();   
-              this.hide();
-              this.$element.trigger('update', this);
-          }
-     },
+        //apply options
+        this.settings = $.extend({}, $.fn.editable.defaults, $.fn.editable.types.defaults, typeDefaults, options, this.$element.data());
 
-     hide: function() { 
-          this.$element.popover('hide');
-          this.$element.removeClass('editable-open');
-          $(document).off('keyup.editable');
-          
-          //returning focus on element or on toggle element
-          if(this.settings.enablefocus || this.$element.get(0) !== this.$toggle.get(0)) {
-              this.$toggle.focus();
-          }
-     },
-     
-     /**
-     * show input inside popover
-     */
-     enableContent: function(error) {
-         if(error !== undefined && error.length > 0) {
-             this.$content.find('div.control-group').addClass('error').find('span.help-block').text(error);
-         } else {
-             this.$content.find('div.control-group').removeClass('error').find('span.help-block').text('');
-         }
-         this.$content.show();  
-         //hide loading
-         this.$element.data('popover').tip().find('.editable-loading').hide();  
-         
-         //move popover to correct position
-         this.setPosition();
-         
-     },
-     
-     /**
-     * move popover to new position. This function mainly copied from bootstrap-popover.
-     */
-     setPosition: function() {
-        var p = this.$element.data('popover'),
-             $tip = p.tip(),
-             inside = false,
-             placement,
-             pos, actualWidth, actualHeight, tp; 
-             
-        placement = typeof p.options.placement === 'function' ?
-          p.options.placement.call(p, $tip[0], p.$element[0]) :
-          p.options.placement;             
-         
-        pos = p.getPosition(inside);
-
-        actualWidth = $tip[0].offsetWidth;
-        actualHeight = $tip[0].offsetHeight;
+        //apply type's specific init()
+        this.settings.init.call(this, options);
         
-
-        switch (inside ? placement.split(' ')[1] : placement) {
-          case 'bottom':
-            tp = {top: pos.top + pos.height, left: pos.left + pos.width / 2 - actualWidth / 2};
-            break;
-          case 'top':
-            tp = {top: pos.top - actualHeight, left: pos.left + pos.width / 2 - actualWidth / 2};
-            break;
-          case 'left':
-            tp = {top: pos.top + pos.height / 2 - actualHeight / 2, left: pos.left - actualWidth};
-            break;
-          case 'right':
-            tp = {top: pos.top + pos.height / 2 - actualHeight / 2, left: pos.left + pos.width};
-            break;
+        //store name
+        this.name = this.settings.name || this.$element.attr('id');
+        if (!this.name) {
+            $.error('You should define name (or id) for Editable element');
         }
 
-        $tip
-          .css(tp)
-          .addClass(placement)
-          .addClass('in');          
-     },
+        //if validate is map take only needed function
+        if (typeof this.settings.validate === 'object' && this.name in this.settings.validate) {
+            this.settings.validate = this.settings.validate[this.name];
+        }
 
-     /**
-     * show loader inside popover
-     */
-     enableLoading: function() {
-         //enlage loading to whole area of popover
-         var $tip = this.$element.data('popover').$tip;
-         $tip.find('.editable-loading').css({height: this.$content[0].offsetHeight, width: this.$content[0].offsetWidth});
-         
-         this.$content.hide();  
-         this.$element.data('popover').tip().find('.editable-loading').show();  
-     },     
-     
-     handleEmpty: function() {
-         //don't have editalbe class --> it's not link --> toggled by another element --> no need to set emptytext
-         if(!this.$element.hasClass('editable')) {
-             return;
-         }
-         
-         if($.trim(this.$element.text()) === '') {
-             this.$element.addClass('editable-empty').text(this.settings.emptytext);
-         } else {
-             this.$element.removeClass('editable-empty');
-         }
-     },
-                                                        
-     validate: function(value) {
-         if(value === undefined) {
-             value = this.value;
-         }
-         if(typeof this.settings.validate === 'function') {
-             return this.settings.validate.call(this, value); 
-         } 
-     },
-     
-     markAsUnsaved: function() {
-        if(this.value !== this.lastSavedValue) {
-            this.$element.addClass('editable-changed');
+        //set value from settings or by element text
+        if (this.settings.value === undefined || this.settings.value === null) {
+            this.settings.setValueByText.call(this);
+            valueSetByText = true;
         } else {
-            this.$element.removeClass('editable-changed');  
+            this.value = this.settings.value;
+            valueSetByText = false;
         }
-     },     
-     
-     markAsSaved: function() {
-         this.lastSavedValue = this.value;
-         this.$element.removeClass('editable-changed');  
-     }
-  };
-     
-  
- /* EDITABLE PLUGIN DEFINITION
-  * ======================= */  
 
-  $.fn.editable = function (option) {
-      //special methods returning non-jquery object
-      var result = {};
-      switch(option) {
-         case 'validate':
-           this.each(function () {
-              var $this = $(this), data = $this.data('editable'), error;
-              if(data && (error = data.validate())) {
-                  result[data.name] = error;
-              }
-           });
-           return result;    
+        //also storing last saved value (initially equals to value)
+        this.lastSavedValue = this.value;
 
-         case 'getValue':
-           this.each(function () {
-              var $this = $(this), data = $this.data('editable');
-              if(data) {
-                  result[data.name] = data.value;
-              }
-           });
-           return result;    
-      }
+        //set toggle element
+        if (this.settings.toggle) {
+            this.$toggle = $(this.settings.toggle);
+            //insert in DOM if needed
+            if (!this.$toggle.parent().length) {
+                this.$element.after(this.$toggle);
+            }
+            //prevent tabstop on element
+            this.$element.attr('tabindex', -1);
+        } else {
+            this.$toggle = this.$element;
 
-      //return jquery object
-      return this.each(function () {
-          var $this = $(this),
-              data = $this.data('editable'),
-              options = typeof option === 'object' && option;
-          if (!data) {
-              $this.data('editable', (data = new Editable(this, options)));
-          }
-          if (typeof option === 'string') {
-              data[option]();
-          }
-      });      
-  };
-  
-  $.fn.editable.Constructor = Editable;
+            //add editable class
+            this.$element.addClass('editable');
+        }
 
-  //default settings
-  $.fn.editable.defaults = {
-    url: null,     //url for submit
-    type: 'text',  //input type
-    name: null,    //field name
-    pk: null,     //primary key or record
-    value: null,  //real value, not shown. Especially usefull for select
-    emptytext: 'Empty', //text shown on empty element
-    params: null,   //additional params to submit
-    send: 'auto', // strategy for sending data on server: 'always', 'never', 'auto' (default). 'auto' = 'ifpk' (deprecated)
-    autotext: 'auto', //can be auto|never|always. Useful for select element: if 'auto' -> element text will be automatically set by provided value and source (in case source is object so no extra request will be performed).
-    enablefocus: false, //wether to return focus on link after popover is closed. It's more functional, but focused links may look not pretty
-    formTemplate: '<form class="form-inline" autocomplete="off">'+
-                       '<div class="control-group">'+
-                           '&nbsp;<button type="submit" class="btn btn-primary"><i class="icon-ok icon-white"></i></button>&nbsp;<button type="button" class="btn editable-cancel"><i class="icon-ban-circle"></i></button>'+
-                           '<span class="help-block" style="clear: both"></span>'+
-                       '</div>'+
-                  '</form>',
-    loading: '<div class="editable-loading"></div>',    
-    
-    validate: function(value) { }, //client-side validation. If returns msg - data will not be sent
-    success: function(data) { }, //after send callback
-    error: function(xhr) { }  //error wnen submitting data    
-  };
-  
-  //input types
-  $.fn.editable.types = {
-      //for all types
-      defaults: {
-            inputclass: 'span2',
-            placeholder: null,
+        //bind click event on toggle
+        this.$toggle.on('click', $.proxy(this.click, this));
+        
+        //blocking click event when going from inside popover. all other clicks will close it
+        $('body').on('click.editable', '.editable-popover', function (e) { e.stopPropagation(); });
+
+        //autotext
+        if(!valueSetByText && this.value !== null && this.value !== undefined) {
+            switch(this.settings.autotext) {
+              case 'always':
+                doAutotext = true; 
+              break;
+              
+              case 'never':
+                doAutotext = false; 
+              break;
+              
+              case 'auto':
+                if(this.$element.html().length) {
+                   doAutotext = false; 
+                } else {
+                   //for SELECT do not use autotext when source is url and autotext = 'auto' (to prevent extra request)
+                   if (type === 'select') {
+                       this.settings.source = tryParseJson(this.settings.source, true);
+                       if (this.settings.source && typeof this.settings.source === 'object') {
+                           doAutotext = true; 
+                       }
+                   } else {
+                      doAutotext = true; 
+                   }                   
+                }
+              break;
+            }
+        }
+        
+        function finalize() {
+            //show emptytext if visible text is empty
+            this.handleEmpty();
+
+            //trigger 'init' event: DEPRECATED
+            this.$element.trigger('init', this);
+
+            //trigger 'render' event with property isInit = true
+            var event = jQuery.Event("render");
+            event.isInit = true;
+            this.$element.trigger(event, this);
+        }           
+                     
+        if(doAutotext) {
+           $.when(this.settings.setTextByValue.call(this)).then($.proxy(finalize, this));
+        } else {
+           finalize.call(this); 
+        }
+        
+             
+    };
+
+    Editable.prototype = {
+        constructor: Editable,
+
+        click: function (e) {
+            e.stopPropagation();
+            e.preventDefault();
+
+            var popover = this.$element.data('popover');
+            if (popover && popover.tip().is(':visible')) {
+                this.hide();
+            } else {
+                this.show();
+            }
+        },
+
+        show: function () {
+            //hide all other popovers if shown
+            $('.popover').find('form').find('button.editable-cancel').click();
+
+            //for the first time create popover
+            if (!this.$element.data('popover')) {
+                this.$element.popover({
+                    trigger  :'manual',
+                    placement:'top',
+                    content  :this.settings.loading
+                });
+
+                this.$element.data('popover').tip().addClass('editable-popover');
+            }
+
+            //show popover
+            this.$element.popover('show');
+            
+            //movepopover to correct position. Refers to bug in bootstrap 2.1.x with popover positioning
+            this.setPosition();
+            
+            this.$element.addClass('editable-open');
+            this.errorOnRender = false;
+
+            //use deffered approach to load data asynchroniously
+            $.when(this.settings.renderInput.call(this))
+            .then($.proxy(function () {
+                var $tip = this.$element.data('popover').tip();
+
+                //render content & input
+                this.$content = $(this.settings.formTemplate);
+                this.$content.find('div.control-group').prepend(this.$input);
+
+                //invoke form into popover content
+                $tip.find('.popover-content p').append(this.$content);
+                
+                //set position once more. It is required to pre-move popover when it is close to screen edge.
+                this.setPosition();
+
+                //check for error during render input
+                if (this.errorOnRender) {
+                    this.$input.attr('disabled', true);
+                    $tip.find('button.btn-primary').attr('disabled', true);
+                    $tip.find('form').submit(function () {
+                        return false;
+                    });
+                    //show error
+                    this.enableContent(this.errorOnRender);
+                } else {
+                    this.$input.removeAttr('disabled');
+                    $tip.find('button.btn-primary').removeAttr('disabled');
+                    //bind form submit
+                    $tip.find('form').submit($.proxy(this.submit, this));
+                    //show input (and hide loading)
+                    this.enableContent();
+                    //set input value
+                    this.settings.setInputValue.call(this);
+                }
+
+                //bind popover hide on button
+                $tip.find('button.editable-cancel').click($.proxy(this.hide, this));
+
+                //bind popover hide on escape
+                $(document).on('keyup.editable', $.proxy(function (e) {
+                    if (e.which === 27) {
+                        e.stopPropagation();
+                        this.hide();
+                    }
+                }, this));
+               
+                //hide popover on external click
+                $(document).on('click.editable', $.proxy(this.hide, this));
+                
+                //trigger 'shown' event
+                this.$element.trigger('shown', this);
+            }, this));
+        },
+
+        submit: function (e) {
+            e.stopPropagation();
+            e.preventDefault();
+
+            var error,
+                value = this.settings.getInputValue.call(this);
+
+            //validation
+            if (error = this.validate(value)) {
+                this.enableContent(error);
+                return;
+            }
+
+            /*jslint eqeqeq: false*/
+            if (value == this.value) {
+            /*jslint eqeqeq: true*/
+                //if value not changed --> do nothing, simply hide popover
+                this.hide();
+            } else {
+                //saving new value
+                this.save(value);
+            }
+        },
+
+        save: function(value) {
+            $.when(this.send(value))
+            .done($.proxy(function (data) {
+                var error, isAjax = (typeof data !== 'undefined');
+
+                //check and run custom success handler
+                if (isAjax && typeof this.settings.success === 'function' && (error = this.settings.success.apply(this, arguments))) {
+                    //show form with error message
+                    this.enableContent(error);
+                    return;
+                }
+
+                //set new value and text
+                this.value = value;
+                this.settings.setTextByValue.call(this);
+
+                //to show that value modified but not saved
+                if (isAjax) {
+                    this.markAsSaved();
+                } else {
+                    this.markAsUnsaved();
+                }
+
+                this.handleEmpty();
+                this.hide();
+
+                //trigger 'update' event. DEPRECATED! Use 'render' instead.
+                this.$element.trigger('update', this);
+
+                //trigger 'render' event with property isInit = false
+                var event = jQuery.Event("render");
+                event.isInit = false;
+                this.$element.trigger(event, this);
+            }, this))
+            .fail($.proxy(function(xhr) {
+                var msg = (typeof this.settings.error === 'function') ? this.settings.error.apply(this, arguments) : null;
+                this.enableContent(msg || xhr.responseText || xhr.statusText);
+            }, this));
+        },
+
+        send: function(value) {
+            var send, pk, params;
+
+            //getting primary key
+            if (typeof this.settings.pk === 'function') {
+                pk = this.settings.pk.call(this.$element);
+            } else if (typeof this.settings.pk === 'string' && $(this.settings.pk).length === 1 && $(this.settings.pk).parent().length) { //pk is ID of existing element
+                pk = $(this.settings.pk).text();
+            } else {
+                pk = this.settings.pk;
+            }
+
+            send = (this.settings.url !== undefined) && ((this.settings.send === 'always') || (this.settings.send === 'auto' && pk) || (this.settings.send === 'ifpk' /* deprecated */ && pk));
+
+            if (send) { //send to server
+                //hide form, show loading
+                this.enableLoading();
+
+                //try parse json in single quotes
+                this.settings.params = tryParseJson(this.settings.params, true);
+
+                //creating params
+                params = (typeof this.settings.params === 'string') ? {params:this.settings.params} : $.extend({}, this.settings.params);
+                params.name = this.name;
+                params.value = value;
+                if (pk) {
+                    params.pk = pk;
+                }
+
+                //send ajax to server and return deferred object
+                return $.ajax({
+                    url     : (typeof this.settings.url === 'function') ? this.settings.url.call(this) : this.settings.url,
+                    data    : params,
+                    type    : 'post',
+                    dataType: 'json'
+                });
+            }
+        },
+
+        hide: function () {
+            this.$element.popover('hide');
+            this.$element.removeClass('editable-open');
+            $(document).off('keyup.editable');
+            $(document).off('click.editable');
+            
+            //returning focus on toggle element
+            if (this.settings.enablefocus || this.$element.get(0) !== this.$toggle.get(0)) {
+                this.$toggle.focus();
+            }
+            
+            //trigger 'hidden' event
+            this.$element.trigger('hidden', this);
+        },
+
+        /**
+         * show input inside popover
+         */
+        enableContent:function (error) {
+            if (error !== undefined && error.length > 0) {
+                this.$content.find('div.control-group').addClass('error').find('span.help-block').text(error);
+            } else {
+                this.$content.find('div.control-group').removeClass('error').find('span.help-block').text('');
+            }
+            this.$content.show();
+            //hide loading
+            this.$element.data('popover').tip().find('.editable-loading').hide();
+
+            //move popover to final correct position
+            this.setPosition();
+
+            //TODO: find elegant way to exclude hardcode of types here
+            if (this.settings.type === 'text' || this.settings.type === 'textarea') {
+                this.$input.focus();
+            }
+        },
+
+        /**
+         * move popover to new position. This function mainly copied from bootstrap-popover.
+         */
+        setPosition: function () {
+            var p = this.$element.data('popover'), $tip = p.tip(), inside = false, placement, pos, actualWidth, actualHeight, tp;
+
+            placement = typeof p.options.placement === 'function' ? p.options.placement.call(p, $tip[0], p.$element[0]) : p.options.placement;
+
+            pos = p.getPosition(inside);
+
+            actualWidth = $tip[0].offsetWidth;
+            actualHeight = $tip[0].offsetHeight;
+
+
+            switch (inside ? placement.split(' ')[1] : placement) {
+                case 'bottom':
+                    tp = {top:pos.top + pos.height, left:pos.left + pos.width / 2 - actualWidth / 2};
+                    break;
+                case 'top':
+                    /* For Bootstrap 2.1.x: 10 pixels needed to correct popover position. See https://github.com/twitter/bootstrap/issues/4665 */
+                    if($tip.find('.arrow').get(0).offsetHeight === 10) {actualHeight += 10;}
+                    tp = {top:pos.top - actualHeight, left:pos.left + pos.width / 2 - actualWidth / 2};
+                    break;
+                case 'left':
+                    /* For Bootstrap 2.1.x: 10 pixels needed to correct popover position. See https://github.com/twitter/bootstrap/issues/4665 */
+                    if($tip.find('.arrow').get(0).offsetWidth === 10) {actualWidth  += 10;}
+                    tp = {top:pos.top + pos.height / 2 - actualHeight / 2, left:pos.left - actualWidth};
+                    break;
+                case 'right':
+                    tp = {top:pos.top + pos.height / 2 - actualHeight / 2, left:pos.left + pos.width};
+                    break;
+            }
+
+            $tip.css(tp).addClass(placement).addClass('in');
+        },
+
+        /**
+         * show loader inside popover
+         */
+        enableLoading:function () {
+            //enlage loading to whole area of popover
+            var $tip = this.$element.data('popover').$tip;
+            $tip.find('.editable-loading').css({height:this.$content[0].offsetHeight, width:this.$content[0].offsetWidth});
+
+            this.$content.hide();
+            this.$element.data('popover').tip().find('.editable-loading').show();
+        },
+
+        handleEmpty:function () {
+            //don't have editalbe class --> it's not link --> toggled by another element --> no need to set emptytext
+            if (!this.$element.hasClass('editable')) {
+                return;
+            }
+
+            if ($.trim(this.$element.text()) === '') {
+                this.$element.addClass('editable-empty').text(this.settings.emptytext);
+            } else {
+                this.$element.removeClass('editable-empty');
+            }
+        },
+
+        validate:function (value) {
+            if (value === undefined) {
+                value = this.value;
+            }
+            if (typeof this.settings.validate === 'function') {
+                return this.settings.validate.call(this, value);
+            }
+        },
+
+        markAsUnsaved:function () {
+            if (this.value !== this.lastSavedValue) {
+                this.$element.addClass('editable-changed');
+            } else {
+                this.$element.removeClass('editable-changed');
+            }
+        },
+
+        markAsSaved:function () {
+            this.lastSavedValue = this.value;
+            this.$element.removeClass('editable-changed');
+        }
+    };
+
+
+    /* EDITABLE PLUGIN DEFINITION
+     * ======================= */
+
+    $.fn.editable = function (option) {
+        //special methods returning non-jquery object
+        var result = {}, args = arguments;
+        switch (option) {
+            case 'validate':
+                this.each(function () {
+                    var $this = $(this), data = $this.data('editable'), error;
+                    if (data && (error = data.validate())) {
+                        result[data.name] = error;
+                    }
+                });
+                return result;
+
+            case 'getValue':
+                this.each(function () {
+                    var $this = $(this), data = $this.data('editable');
+                    if (data && data.value !== undefined && data.value !== null) {
+                        result[data.name] = data.value;
+                    }
+                });
+                return result;
+                
+            case 'submit':  //collects value, validate and submit to server for creating new record
+                var config = arguments[1] || {},
+                    $elems = this,
+                    errors = this.editable('validate'),
+                    values;
+                
+                if(typeof config.error !== 'function') {
+                    config.error = function() {};
+                } 
+
+                if($.isEmptyObject(errors)) {
+                    values = this.editable('getValue'); 
+                    if(config.data) {
+                        $.extend(values, config.data);
+                    }
+                    $.ajax({
+                        type: 'POST',
+                        url: config.url, 
+                        data: values, 
+                        dataType: 'json'
+                    }).success(function(response) {
+                        if(typeof response === 'object' && response.id) {
+                            $elems.editable('option', 'pk', response.id); 
+                            $elems.editable('markAsSaved');
+                            if(typeof config.success === 'function') {
+                                config.success.apply($elems, arguments);
+                            } 
+                        } else { //server-side validation error
+                            config.error.apply($elems, arguments);
+                        }
+                    }).error(function(){  //ajax error
+                        config.error.apply($elems, arguments);
+                    });
+                } else { //client-side validation error
+                    config.error.call($elems, {errors: errors});
+                }
+                
+                return this;
+        }
+
+        //return jquery object
+        return this.each(function () {
+            var $this = $(this), data = $this.data('editable'), options = typeof option === 'object' && option;
+            if (!data) {
+                $this.data('editable', (data = new Editable(this, options)));
+            }
+            
+            if(option === 'option') {
+                 if(args.length === 2 && typeof args[1] === 'object') {
+                     $.extend(data.settings, args[1]); //set options by object
+                 } else if(args.length === 3 && typeof args[1] === 'string') {
+                    data.settings[args[1]] = args[2]; //set one option
+                 } 
+            } else if (typeof option === 'string') {
+                data[option]();
+            }
+        });
+    };
+
+    $.fn.editable.Constructor = Editable;
+
+    //default settings
+    $.fn.editable.defaults = {
+        url:null, //url for submit
+        type:'text', //input type
+        name:null, //field name
+        pk:null, //primary key or record
+        value:null, //real value, not shown. Especially usefull for select
+        emptytext:'Empty', //text shown on empty element
+        params:null, //additional params to submit
+        send:'auto', // strategy for sending data on server: 'always', 'never', 'auto' (default). 'auto' = 'ifpk' (deprecated)
+        autotext:'auto', //can be auto|never|always. Useful for select element: if 'auto' -> element text will be automatically set by provided value and source (in case source is object so no extra request will be performed).
+        enablefocus:false, //wether to return focus on link after popover is closed. It's more functional, but focused links may look not pretty
+        formTemplate:'<form class="form-inline" autocomplete="off">' + 
+                       '<div class="control-group">' + 
+                       '&nbsp;<button type="submit" class="btn btn-primary"><i class="icon-ok icon-white"></i></button>&nbsp;<button type="button" class="btn editable-cancel"><i class="icon-ban-circle"></i></button>' + 
+                       '<span class="help-block" style="clear: both"></span>' + 
+                       '</div>' + 
+                       '</form>',
+        loading:'<div class="editable-loading"></div>',
+
+        validate:function (value) {
+        }, //client-side validation. If returns msg - data will not be sent
+        success:function (data) {
+        }, //after send callback
+        error:function (xhr) {
+        }  //error wnen submitting data
+    };
+
+    //input types
+    $.fn.editable.types = {
+        //for all types
+        defaults:{
+            inputclass:'span2',
+            placeholder:null,
+            init:function (options) {},
             // this function called every time popover shown. Should set value of this.$input
-            renderInput: function() {                  
+            renderInput:function () {
                 this.$input = $(this.settings.template);
                 this.$input.addClass(this.settings.inputclass);
-                if(this.settings.placeholder) {
+                if (this.settings.placeholder) {
                     this.$input.attr('placeholder', this.settings.placeholder);
                 }
-                this.endShow();
             },
-            setInputValue: function() {           
+            setInputValue:function () {
                 this.$input.val(this.value);
                 this.$input.focus();
-            }, 
+            },
             //getter for value from input
-            getInputValue: function() { 
+            getInputValue:function () {
                 return this.$input.val();
-            },    
+            },
 
             //setting text of element (init)
-            setTextByValue: function() {
-                this.$element.text(this.value); 
+            setTextByValue:function () {
+                this.$element.text(this.value);
             },
 
             //setting value by element text (init)
-            setValueByText: function() {
-                this.value = $.trim(this.$element.text()); 
-            }    
-      },
-      
-      //text
-      text: {
-          template: '<input type="text">',
-          setInputValue: function() {
-              this.$input.val(this.value);
-              setCursorPosition.call(this.$input, this.$input.val().length);
-              this.$input.focus();
-          }
-      },
-      
-      //select
-      select: {
-          template: '<select></select>',
-          source: null,
-          prepend: false,  
-          init: function(options) {
-              //if no value provided, do nothng
-              if(this.value === undefined || this.value === null) {
-                  return;
-              }
-              
-              //set element text by value (depends on autotext option)
-              if(this.settings.autotext === 'always') {
-                  this.settings.setTextByValue.call(this);
-                  return;
-              }
-              
-              var isEmpty = !this.$element.html().length;
-              if(this.settings.autotext === 'auto' && isEmpty) {
-                  this.settings.source = tryParseJson(this.settings.source, true);
-                  if(this.settings.source && typeof this.settings.source === 'object') {
-                     this.settings.setTextByValue.call(this);
-                  }
-              }
-          },        
-          onSourceReady: function(success, error) {
-              // try parse json in single quotes (for double quotes jquery does automatically)
-              try {
-                  this.settings.source = tryParseJson(this.settings.source, false);
-              } catch(e) {
-                  error.call(this);
-                  return;
-              }
-              
-              if(typeof this.settings.source === 'string') { 
-                  var cacheID = this.settings.source+'-'+this.name,
-                      cache;
+            setValueByText:function () {
+                this.value = $.trim(this.$element.text());
+            }
+        },
 
-                  if(!$(document).data(cacheID)) {
-                      $(document).data(cacheID, {});
-                  }
-                  cache = $(document).data(cacheID);
-                 
-                  //check for cached data
-                  if (cache.loading === false && cache.source && typeof cache.source === 'object') { //take source from cache
-                      this.settings.source = cache.source;
-                      success.call(this);
-                      return;
-                  } else if (cache.loading === true) { //cache is loading, put callback in stack to be called later
-                      cache.callbacks.push($.proxy(function () {
-                          this.settings.source = cache.source;
-                          success.call(this);
-                      }, this));
-                      
-                      //also collecting error callbacks
-                      cache.err_callbacks.push($.proxy(error, this));                      
-                      return;
-                  } else { //no cache yet, activate it
-                      cache.loading = true;
-                      cache.callbacks = [];
-                      cache.err_callbacks = [];
-                  }
-                    
-                  //options loading from server
-                  $.ajax({
-                      url: this.settings.source, 
-                      type: 'get',
-                      data: {name: this.name},
-                      dataType: 'json',
-                      success: $.proxy(function(data) {
-                          this.settings.source = this.settings.doPrepend.call(this, data);
-                          cache.loading = false;
-                          cache.source = this.settings.source;
-                          success.call(this);
-                          $.each(cache.callbacks, function(){ this.call(); }); //run callbacks for other fields
-                      }, this),
-                      error: $.proxy(function(){
-                          cache.loading = false;
-                          error.call(this);
-                          $.each(cache.err_callbacks, function(){ this.call(); }); //run callbacks for other fields
-                      }, this)
-                  });
-              } else { //options as json/array
-              
-                  //convert regular array to object
-                  if($.isArray(this.settings.source)) {
-                     var arr = this.settings.source, obj = {};
-                     for (var i = 0; i < arr.length; i++) {
-                        if (arr[i] !== undefined) {
-                            obj[i] = arr[i];
+        //text
+        text:{
+            template:'<input type="text">',
+            setInputValue:function () {
+                this.$input.val(this.value);
+                setCursorPosition.call(this.$input, this.$input.val().length);
+                this.$input.focus();
+            }
+        },
+
+        //select
+        select:{
+            template:'<select></select>',
+            source:null,
+            prepend:false,
+            onSourceReady:function (success, error) {
+                // try parse json in single quotes (for double quotes jquery does automatically)
+                try {
+                    this.settings.source = tryParseJson(this.settings.source, false);
+                } catch (e) {
+                    error.call(this);
+                    return;
+                }
+
+                if (typeof this.settings.source === 'string') {
+                    var cacheID = this.settings.source + '-' + this.name, cache;
+
+                    if (!$(document).data(cacheID)) {
+                        $(document).data(cacheID, {});
+                    }
+                    cache = $(document).data(cacheID);
+
+                    //check for cached data
+                    if (cache.loading === false && cache.source && typeof cache.source === 'object') { //take source from cache
+                        this.settings.source = cache.source;
+                        success.call(this);
+                        return;
+                    } else if (cache.loading === true) { //cache is loading, put callback in stack to be called later
+                        cache.callbacks.push($.proxy(function () {
+                            this.settings.source = cache.source;
+                            success.call(this);
+                        }, this));
+
+                        //also collecting error callbacks
+                        cache.err_callbacks.push($.proxy(error, this));
+                        return;
+                    } else { //no cache yet, activate it
+                        cache.loading = true;
+                        cache.callbacks = [];
+                        cache.err_callbacks = [];
+                    }
+
+                    //options loading from server
+                    $.ajax({
+                        url:this.settings.source,
+                        type:'get',
+                        data:{name:this.name},
+                        dataType:'json',
+                        success:$.proxy(function (data) {
+                            this.settings.source = this.settings.doPrepend.call(this, data);
+                            cache.loading = false;
+                            cache.source = this.settings.source;
+                            success.call(this);
+                            $.each(cache.callbacks, function () {
+                                this.call();
+                            }); //run callbacks for other fields
+                        }, this),
+                        error:$.proxy(function () {
+                            cache.loading = false;
+                            error.call(this);
+                            $.each(cache.err_callbacks, function () {
+                                this.call();
+                            }); //run callbacks for other fields
+                        }, this)
+                    });
+                } else { //options as json/array
+
+                    //convert regular array to object
+                    if ($.isArray(this.settings.source)) {
+                        var arr = this.settings.source, obj = {};
+                        for (var i = 0; i < arr.length; i++) {
+                            if (arr[i] !== undefined) {
+                                obj[i] = arr[i];
+                            }
                         }
-                     }
-                     this.settings.source = obj;
-                  }
-              
-                  this.settings.source = this.settings.doPrepend.call(this, this.settings.source);
-                  success.call(this);
-              }              
-          }, 
-          
-          doPrepend: function(data) {
-              this.settings.prepend = tryParseJson(this.settings.prepend, true);
-              
-              if(typeof this.settings.prepend === 'string') {
-                  return $.extend({}, {'': this.settings.prepend}, data);
-              } else if(typeof this.settings.prepend === 'object') {
-                  return $.extend({}, this.settings.prepend, data); 
-              } else {
-                  return data;
-              }                 
-          },  
-          
-          renderInput: function() {     
-              this.$input = $(this.settings.template); 
-              this.$input.addClass(this.settings.inputclass); 
-              this.settings.onSourceReady.call(this,
-              function(){
-                  if(typeof this.settings.source === 'object' && this.settings.source != null) {
-                      $.each(this.settings.source, $.proxy(function(key, value) {   
-                          this.$input.append($('<option>', { value : key }).text(value)); 
-                      }, this));    
-                  }
-                  this.endShow();
-              },
-              function(){
-                  this.errorOnRender = 'Error when loading options';
-                  this.endShow();
-              });
-          },
-          
-          setValueByText: function() {
-              this.value = null; //it's not good to set value by select text. better set NULL
-          },           
-          
-          setTextByValue: function() {
-              this.settings.onSourceReady.call(this,
-              function(){
-                  if(typeof this.settings.source === 'object' && this.value in this.settings.source) {
-                      this.$element.text(this.settings.source[this.value]);
-                  } else {
-                      //set empty string when key not found in source
-                      this.$element.text('');
-                  }
-              },
-              function(){
-                 this.$element.text('Error!');
-              });
-          }
-      },
+                        this.settings.source = obj;
+                    }
 
-      //textarea
-      textarea: {
-          template: '<textarea rows="8"></textarea>',
-          inputclass: 'span3',
-          renderInput: function() {                  
+                    this.settings.source = this.settings.doPrepend.call(this, this.settings.source);
+                    success.call(this);
+                }
+            },
+
+            doPrepend:function (data) {
+                this.settings.prepend = tryParseJson(this.settings.prepend, true);
+
+                if (typeof this.settings.prepend === 'string') {
+                    return $.extend({}, {'':this.settings.prepend}, data);
+                } else if (typeof this.settings.prepend === 'object') {
+                    return $.extend({}, this.settings.prepend, data);
+                } else {
+                    return data;
+                }
+            },
+
+            renderInput:function () {
+                var deferred = $.Deferred();
                 this.$input = $(this.settings.template);
                 this.$input.addClass(this.settings.inputclass);
-                if(this.settings.placeholder) {
+                this.settings.onSourceReady.call(this, function () {
+                        if (typeof this.settings.source === 'object' && this.settings.source != null) {
+                            $.each(this.settings.source, $.proxy(function (key, value) {
+                                this.$input.append($('<option>', { value:key }).text(value));
+                            }, this));
+                        }
+                        deferred.resolve();
+                    }, function () {
+                        this.errorOnRender = 'Error when loading options';
+                        deferred.resolve();
+                    });
+
+                return deferred.promise();
+            },
+
+            setValueByText:function () {
+                this.value = null; //it's not good to set value by select text. better set NULL
+            },
+
+            setTextByValue:function () {
+                var deferred = $.Deferred();
+                this.settings.onSourceReady.call(this, function () {
+                        if (typeof this.settings.source === 'object' && this.value in this.settings.source) {
+                            this.$element.text(this.settings.source[this.value]);
+                        } else {
+                            //set empty string when key not found in source
+                            this.$element.text('');
+                        }
+                        deferred.resolve();
+                    }, function () {
+                        this.$element.text('Error!');
+                        deferred.resolve();
+                    });
+
+                return deferred.promise();
+            }
+        },
+
+        //textarea
+        textarea:{
+            template:'<textarea rows="8"></textarea>',
+            inputclass:'span3',
+            renderInput:function () {
+                this.$input = $(this.settings.template);
+                this.$input.addClass(this.settings.inputclass);
+                if (this.settings.placeholder) {
                     this.$input.attr('placeholder', this.settings.placeholder);
                 }
-                
+
                 //ctrl + enter
-                this.$input.keydown(function(e) {
+                this.$input.keydown(function (e) {
                     if (e.ctrlKey && e.which === 13) {
                         $(this).closest('form').submit();
                     }
                 });
+            },
+            setInputValue:function () {
+                this.$input.val(this.value);
+                setCursorPosition.apply(this.$input, [this.$input.val().length]);
+                this.$input.focus();
+            },
+            setValueByText:function () {
+                var lines = this.$element.html().split(/<br\s*\/?>/i);
+                for (var i = 0; i < lines.length; i++) {
+                    lines[i] = $('<div>').html(lines[i]).text();
+                }
+                this.value = lines.join("\n");
+            },
+            setTextByValue:function () {
+                var lines = this.value.split("\n");
+                for (var i = 0; i < lines.length; i++) {
+                    lines[i] = $('<div>').text(lines[i]).html();
+                }
+                var text = lines.join('<br>');
+                this.$element.html(text);
+            }
+        },
+
+        /*
+         date
+         based on fork: https://github.com/vitalets/bootstrap-datepicker
+         */
+        date:{
+            template:'<div style="float: left; padding: 0; margin: 0" class="well"></div>',
+            format:'yyyy-mm-dd', //format used for datepicker and sending to server
+            viewformat: null,  //used only for showing date
+            datepicker:{
+                autoclose:false,
+                keyboardNavigation:false
+            },
+            init:function (options) {
+                //set popular options directly from settings or data-* attributes
+                var directOptions = mergeKeys({}, this.settings, ['format', 'weekStart', 'startView']);
                 
-                this.endShow();
-          },          
-          setInputValue: function() {
-              this.$input.val(this.value);
-              setCursorPosition.apply(this.$input, [this.$input.val().length]);
-              this.$input.focus();
-          },
-          setValueByText: function() {
-              var lines = this.$element.html().split(/<br\s*\/?>/i);
-              for(var i = 0; i < lines.length; i++) {
-                  lines[i] = $('<div>').html(lines[i]).text();
-              }              
-              this.value = lines.join("\n");
-          },           
-          setTextByValue: function() {
-              var lines = this.value.split("\n");
-              for(var i = 0; i < lines.length; i++) {
-                  lines[i] = $('<div>').text(lines[i]).html();
-              }
-              var text = lines.join('<br>');
-              this.$element.html(text); 
-          }
-      },
-      
-     /*
-      date
-      based on fork: https://github.com/vitalets/bootstrap-datepicker
-      */
-      date: {
-          template: '<div style="float: left; padding: 0; margin: 0" class="well"></div>',
-          format: 'dd/mm/yyyy',
-          datepicker: {
-              autoclose: false,
-              keyboardNavigation: false
-          },
-          init: function(options) {
-              //set popular options directly from settings or data-* attributes
-              var directOptions = mergeKeys({}, this.settings, ['format', 'weekStart', 'startView']);
-              
-              //overriding datepicker config (as by default jQuery merge is not recursive)
-              this.settings.datepicker = $.extend({}, $.fn.editable.types.date.datepicker, directOptions, options.datepicker);   
-          },
-          renderInput: function() {
-              this.$input = $(this.settings.template);      
-              this.$input.datepicker(this.settings.datepicker);
-              this.endShow();
-          },
-          setInputValue: function() {
-              this.$input.datepicker('update', this.value);
-          },
-          getInputValue: function() {
-              var dp = this.$input.data('datepicker');
-              return dp.getFormattedDate();
-          }          
-      }              
-  };  
+                //overriding datepicker config (as by default jQuery merge is not recursive)
+                this.settings.datepicker = $.extend({}, $.fn.editable.types.date.datepicker, directOptions, options.datepicker);
+                
+                //by default viewformat equals to format
+                if(!this.settings.viewformat) {
+                    this.settings.viewformat = this.settings.datepicker.format;
+                }                
+            },
+            renderInput:function () {
+                this.$input = $(this.settings.template);
+                this.$input.datepicker(this.settings.datepicker);
+            },
+            setInputValue:function () {
+                this.$input.datepicker('update', this.value);
+            },
+            getInputValue:function () {
+                var dp = this.$input.data('datepicker');
+                return dp.getFormattedDate();
+            },
+            setTextByValue:function () {
+                var text = this.settings.converFormat.call(this, this.value, this.settings.format, this.settings.viewformat);    
+                this.$element.text(text);
+            },
+            setValueByText:function () {
+                var text = $.trim(this.$element.text());
+                if(!text.length) {
+                    return;
+                }
+                this.value = this.settings.converFormat.call(this, text, this.settings.viewformat, this.settings.format);    
+            },
+            //helper function to convert date between two formats
+            converFormat: function(dateStr, formatFrom, formatTo) {
+                if(formatFrom === formatTo) {
+                    return dateStr; 
+                }
+                var dpg = $.fn.datepicker.DPGlobal, 
+                    dateObj,
+                    lang = (this.settings.datepicker && this.settings.datepicker.language) || 'en';
+                formatFrom = dpg.parseFormat(formatFrom);
+                formatTo = dpg.parseFormat(formatTo);
+                dateObj = dpg.parseDate($.trim(dateStr), formatFrom, lang);
+                return dpg.formatDate(dateObj, formatTo, lang);
+            }           
+        }
+    };
 
-/**
-* set caret position in input
-* see http://stackoverflow.com/questions/499126/jquery-set-cursor-position-in-text-area     
-*/
-function setCursorPosition(pos) {
-  this.each(function(index, elem) {
-    if (elem.setSelectionRange) {
-      elem.setSelectionRange(pos, pos);
-    } else if (elem.createTextRange) {
-      var range = elem.createTextRange();
-      range.collapse(true);
-      range.moveEnd('character', pos);
-      range.moveStart('character', pos);
-      range.select();
-    }
-  });
-  return this;
-}
-
-/**
-* function to parse JSON in *single* quotes. (jquery automatically parse only double quotes)
-* That allows such code as: <a data-source="{'a': 'b', 'c': 'd'}">
-* safe = true --> means no exception will be thrown
-* for details see http://stackoverflow.com/questions/7410348/how-to-set-json-format-to-html5-data-attributes-in-the-jquery   
-*/
-function tryParseJson(s, safe) {   
-     if(typeof s === 'string' && s.length && s.match(/^\{.*\}$/)) {
-          if(safe) {
-              try {
-                  /*jslint evil: true*/
-                  s = (new Function( 'return ' + s ))();
-                  /*jslint evil: false*/
-              } catch(e) {}
-              finally {
-                  return s;
-              }
-          } else {
-              /*jslint evil: true*/
-              s = (new Function( 'return ' + s ))();  
-             /*jslint evil: false*/
-          }
-     } 
+    /*
+    * ========================== FUNCTIONS ========================
+    */
     
-     return s;
-}
+    /**
+     * set caret position in input
+     * see http://stackoverflow.com/questions/499126/jquery-set-cursor-position-in-text-area
+     */
+    function setCursorPosition(pos) {
+        this.each(function (index, elem) {
+            if (elem.setSelectionRange) {
+                elem.setSelectionRange(pos, pos);
+            } else if (elem.createTextRange) {
+                var range = elem.createTextRange();
+                range.collapse(true);
+                range.moveEnd('character', pos);
+                range.moveStart('character', pos);
+                range.select();
+            }
+        });
+        return this;
+    }
 
-/**
-* function merges only specified keys
-*/
-function mergeKeys(objTo, objFrom, keys) {   
-     var key, keyLower;
-     if(!$.isArray(keys)) {
-         return objTo;
-     }
-     for(var i=0; i<keys.length; i++) {
-         key = keys[i];
-         if(key in objFrom) {
-            objTo[key] = objFrom[key];
-            continue;
-         }
-         //note, that when getting data-* attributes via $.data() it's converted it to lowercase. 
-         //details: http://stackoverflow.com/questions/7602565/using-data-attributes-with-jquery         
-         //workaround is code below. 
-         keyLower = key.toLowerCase();
-         if(keyLower in objFrom) {
-            objTo[key] = objFrom[keyLower];
-         }
-     }
-     return objTo;
-}
-  
-}( window.jQuery ));  
+    /**
+     * function to parse JSON in *single* quotes. (jquery automatically parse only double quotes)
+     * That allows such code as: <a data-source="{'a': 'b', 'c': 'd'}">
+     * safe = true --> means no exception will be thrown
+     * for details see http://stackoverflow.com/questions/7410348/how-to-set-json-format-to-html5-data-attributes-in-the-jquery
+     */
+    function tryParseJson(s, safe) {
+        if (typeof s === 'string' && s.length && s.match(/^\{.*\}$/)) {
+            if (safe) {
+                try {
+                    /*jslint evil: true*/
+                    s = (new Function('return ' + s))();
+                    /*jslint evil: false*/
+                } catch (e) {} finally {
+                    return s;
+                }
+            } else {
+                /*jslint evil: true*/
+                s = (new Function('return ' + s))();
+                /*jslint evil: false*/
+            }
+        }
+
+        return s;
+    }
+
+    /**
+     * function merges only specified keys
+     */
+    function mergeKeys(objTo, objFrom, keys) {
+        var key, keyLower;
+        if (!$.isArray(keys)) {
+            return objTo;
+        }
+        for (var i = 0; i < keys.length; i++) {
+            key = keys[i];
+            if (key in objFrom) {
+                objTo[key] = objFrom[key];
+                continue;
+            }
+            //note, that when getting data-* attributes via $.data() it's converted it to lowercase.
+            //details: http://stackoverflow.com/questions/7602565/using-data-attributes-with-jquery
+            //workaround is code below.
+            keyLower = key.toLowerCase();
+            if (keyLower in objFrom) {
+                objTo[key] = objFrom[keyLower];
+            }
+        }
+        return objTo;
+    }
+
+}(window.jQuery));
 !function( $ ) {
+
+	function UTCDate(){
+		return new Date(Date.UTC.apply(Date, arguments));
+	}
 
 	// Picker object
 
-	var Datepicker = function(element, options){
+	var Datepicker = function(element, options) {
+		var that = this;
+
 		this.element = $(element);
 		this.language = options.language||this.element.data('date-language')||"en";
 		this.language = this.language in dates ? this.language : "en";
 		this.format = DPGlobal.parseFormat(options.format||this.element.data('date-format')||'mm/dd/yyyy');
-        this.isInline = false;
+                this.isInline = false;
 		this.isInput = this.element.is('input');
 		this.component = this.element.is('.date') ? this.element.find('.add-on') : false;
+		this.hasInput = this.component && this.element.find('input').length;
 		if(this.component && this.component.length === 0)
 			this.component = false;
 
        if (this.isInput) {   //single input
             this.element.on({
                 focus: $.proxy(this.show, this),
-                blur: $.proxy(this._hide, this),
                 keyup: $.proxy(this.update, this),
                 keydown: $.proxy(this.keydown, this)
             });
-        } else if(this.component) {  //component: input + button
+        } else if(this.component && this.hasInput) {  //component: input + button
                 // For components that are not readonly, allow keyboard nav
                 this.element.find('input').on({
                     focus: $.proxy(this.show, this),
-                    blur: $.proxy(this._hide, this),
                     keyup: $.proxy(this.update, this),
                     keydown: $.proxy(this.keydown, this)
                 });
 
                 this.component.on('click', $.proxy(this.show, this));
-                var element = this.element.find('input');
-                element.on({
-                    blur: $.proxy(this._hide, this)
-                });
         } else if(this.element.is('div')) {  //inline datepicker
             this.isInline = true;
         } else {
@@ -826,6 +971,13 @@ function mergeKeys(objTo, objFrom, keys) {
             this.picker.addClass('dropdown-menu');
         }
 
+		$(document).on('mousedown', function (e) {
+			// Clicked outside the datepicker, hide it
+			if ($(e.target).closest('.datepicker').length == 0) {
+				that.hide();
+			}
+		});
+
 		this.autoclose = false;
 		if ('autoclose' in options) {
 			this.autoclose = options.autoclose;
@@ -833,12 +985,12 @@ function mergeKeys(objTo, objFrom, keys) {
 			this.autoclose = this.element.data('date-autoclose');
 		}
 
-        this.keyboardNavigation = true;
-        if ('keyboardNavigation' in options) {
-            this.keyboardNavigation = options.keyboardNavigation;
-        } else if ('dateKeyboardNavigation' in this.element.data()) {
-            this.keyboardNavigation = this.element.data('date-keyboard-navigation');
-        }
+		this.keyboardNavigation = true;
+		if ('keyboardNavigation' in options) {
+			this.keyboardNavigation = options.keyboardNavigation;
+		} else if ('dateKeyboardNavigation' in this.element.data()) {
+			this.keyboardNavigation = this.element.data('date-keyboard-navigation');
+		}
 
 		switch(options.startView || this.element.data('date-start-view')){
 			case 2:
@@ -885,38 +1037,10 @@ function mergeKeys(objTo, objFrom, keys) {
 				e.stopPropagation();
 				e.preventDefault();
 			}
-			if (!this.isInput) {
-				$(document).on('mousedown', $.proxy(this.hide, this));
-			}
 			this.element.trigger({
 				type: 'show',
 				date: this.date
 			});
-		},
-
-		_hide: function(e){
-			// When going from the input to the picker, IE handles the blur/click
-			// events differently than other browsers, in such a way that the blur
-			// event triggers a hide before the click event can stop propagation.
-			if ($.browser.msie) {
-				var t = this, args = arguments;
-
-				function cancel_hide(){
-					clearTimeout(hide_timeout);
-					e.target.focus();
-					t.picker.off('click', cancel_hide);
-				}
-
-				function do_hide(){
-					t.hide.apply(t, args);
-					t.picker.off('click', cancel_hide);
-				}
-
-				this.picker.on('click', cancel_hide);
-				var hide_timeout = setTimeout(do_hide, 100);
-			} else {
-				return this.hide.apply(this, arguments);
-			}
 		},
 
 		hide: function(e){
@@ -972,10 +1096,10 @@ function mergeKeys(objTo, objFrom, keys) {
 		},
 
 		place: function(){
-            if(this.isInline) return;
+                        if(this.isInline) return;
 			var zIndex = parseInt(this.element.parents().filter(function() {
-                          	return $(this).css('z-index') != 'auto';
-                        }).first().css('z-index'))+10;
+							return $(this).css('z-index') != 'auto';
+						}).first().css('z-index'))+10;
 			var offset = this.component ? this.component.offset() : this.element.offset();
 			this.picker.css({
 				top: offset.top + this.height,
@@ -1028,35 +1152,34 @@ function mergeKeys(objTo, objFrom, keys) {
 
 		fill: function() {
 			var d = new Date(this.viewDate),
-				year = d.getFullYear(),
-				month = d.getMonth(),
-				startYear = this.startDate !== -Infinity ? this.startDate.getFullYear() : -Infinity,
-				startMonth = this.startDate !== -Infinity ? this.startDate.getMonth() : -Infinity,
-				endYear = this.endDate !== Infinity ? this.endDate.getFullYear() : Infinity,
-				endMonth = this.endDate !== Infinity ? this.endDate.getMonth() : Infinity,
+				year = d.getUTCFullYear(),
+				month = d.getUTCMonth(),
+				startYear = this.startDate !== -Infinity ? this.startDate.getUTCFullYear() : -Infinity,
+				startMonth = this.startDate !== -Infinity ? this.startDate.getUTCMonth() : -Infinity,
+				endYear = this.endDate !== Infinity ? this.endDate.getUTCFullYear() : Infinity,
+				endMonth = this.endDate !== Infinity ? this.endDate.getUTCMonth() : Infinity,
 				currentDate = this.date.valueOf();
 			this.picker.find('.datepicker-days th:eq(1)')
 						.text(dates[this.language].months[month]+' '+year);
 			this.updateNavArrows();
 			this.fillMonths();
-			var prevMonth = new Date(year, month-1, 28,0,0,0,0),
-				day = DPGlobal.getDaysInMonth(prevMonth.getFullYear(), prevMonth.getMonth()),
-				prevDate, dstDay = 0, date;
-			prevMonth.setDate(day);
-			prevMonth.setDate(day - (prevMonth.getDay() - this.weekStart + 7)%7);
+			var prevMonth = UTCDate(year, month-1, 28,0,0,0,0),
+				day = DPGlobal.getDaysInMonth(prevMonth.getUTCFullYear(), prevMonth.getUTCMonth());
+			prevMonth.setUTCDate(day);
+			prevMonth.setUTCDate(day - (prevMonth.getUTCDay() - this.weekStart + 7)%7);
 			var nextMonth = new Date(prevMonth);
-			nextMonth.setDate(nextMonth.getDate() + 42);
+			nextMonth.setUTCDate(nextMonth.getUTCDate() + 42);
 			nextMonth = nextMonth.valueOf();
 			var html = [];
 			var clsName;
 			while(prevMonth.valueOf() < nextMonth) {
-				if (prevMonth.getDay() == this.weekStart) {
+				if (prevMonth.getUTCDay() == this.weekStart) {
 					html.push('<tr>');
 				}
 				clsName = '';
-				if (prevMonth.getFullYear() < year || (prevMonth.getFullYear() == year && prevMonth.getMonth() < month)) {
+				if (prevMonth.getUTCFullYear() < year || (prevMonth.getUTCFullYear() == year && prevMonth.getUTCMonth() < month)) {
 					clsName += ' old';
-				} else if (prevMonth.getFullYear() > year || (prevMonth.getFullYear() == year && prevMonth.getMonth() > month)) {
+				} else if (prevMonth.getUTCFullYear() > year || (prevMonth.getUTCFullYear() == year && prevMonth.getUTCMonth() > month)) {
 					clsName += ' new';
 				}
 				if (prevMonth.valueOf() == currentDate) {
@@ -1065,45 +1188,14 @@ function mergeKeys(objTo, objFrom, keys) {
 				if (prevMonth.valueOf() < this.startDate || prevMonth.valueOf() > this.endDate) {
 					clsName += ' disabled';
 				}
-				date = prevMonth.getDate();
-				if (dstDay == -1) date++;
-				html.push('<td class="day'+clsName+'">'+date+ '</td>');
-				if (prevMonth.getDay() == this.weekEnd) {
+				html.push('<td class="day'+clsName+'">'+prevMonth.getUTCDate() + '</td>');
+				if (prevMonth.getUTCDay() == this.weekEnd) {
 					html.push('</tr>');
 				}
-				prevDate = prevMonth.getDate();
-				prevMonth.setDate(prevMonth.getDate()+1);
-				if (prevMonth.getHours() != 0) {
-					// Fix for DST bug: if we are no longer at start of day, a DST jump probably happened
-					// We either fell back (eg, Jan 1 00:00 -> Jan 1 23:00)
-					// or jumped forward   (eg, Jan 1 00:00 -> Jan 2 01:00)
-					// Unfortunately, I can think of no way to test this in the unit tests, as it depends
-					// on the TZ of the client system.
-					if (!dstDay) {
-						// We are not currently handling a dst day (next round will deal with it)
-						if (prevMonth.getDate() == prevDate)
-							// We must compensate for fall-back
-							dstDay = -1;
-						else
-							// We must compensate for a jump-ahead
-							dstDay = +1;
-					}
-					else {
-						// The last round was our dst day (hours are still non-zero)
-						if (dstDay == -1)
-							// For a fall-back, fast-forward to next midnight
-							prevMonth.setHours(24);
-						else
-							// For a jump-ahead, just reset to 0
-							prevMonth.setHours(0);
-						// Reset minutes, as some TZs may be off by portions of an hour
-						prevMonth.setMinutes(0);
-						dstDay = 0;
-					}
-				}
+				prevMonth.setUTCDate(prevMonth.getUTCDate()+1);
 			}
 			this.picker.find('.datepicker-days tbody').empty().append(html.join(''));
-			var currentYear = this.date.getFullYear();
+			var currentYear = this.date.getUTCFullYear();
 
 			var months = this.picker.find('.datepicker-months')
 						.find('th:eq(1)')
@@ -1111,7 +1203,7 @@ function mergeKeys(objTo, objFrom, keys) {
 							.end()
 						.find('span').removeClass('active');
 			if (currentYear == year) {
-				months.eq(this.date.getMonth()).addClass('active');
+				months.eq(this.date.getUTCMonth()).addClass('active');
 			}
 			if (year < startYear || year > endYear) {
 				months.addClass('disabled');
@@ -1140,16 +1232,16 @@ function mergeKeys(objTo, objFrom, keys) {
 
 		updateNavArrows: function() {
 			var d = new Date(this.viewDate),
-				year = d.getFullYear(),
-				month = d.getMonth();
+				year = d.getUTCFullYear(),
+				month = d.getUTCMonth();
 			switch (this.viewMode) {
 				case 0:
-					if (this.startDate !== -Infinity && year <= this.startDate.getFullYear() && month <= this.startDate.getMonth()) {
+					if (this.startDate !== -Infinity && year <= this.startDate.getUTCFullYear() && month <= this.startDate.getUTCMonth()) {
 						this.picker.find('.prev').css({visibility: 'hidden'});
 					} else {
 						this.picker.find('.prev').css({visibility: 'visible'});
 					}
-					if (this.endDate !== Infinity && year >= this.endDate.getFullYear() && month >= this.endDate.getMonth()) {
+					if (this.endDate !== Infinity && year >= this.endDate.getUTCFullYear() && month >= this.endDate.getUTCMonth()) {
 						this.picker.find('.next').css({visibility: 'hidden'});
 					} else {
 						this.picker.find('.next').css({visibility: 'visible'});
@@ -1157,12 +1249,12 @@ function mergeKeys(objTo, objFrom, keys) {
 					break;
 				case 1:
 				case 2:
-					if (this.startDate !== -Infinity && year <= this.startDate.getFullYear()) {
+					if (this.startDate !== -Infinity && year <= this.startDate.getUTCFullYear()) {
 						this.picker.find('.prev').css({visibility: 'hidden'});
 					} else {
 						this.picker.find('.prev').css({visibility: 'visible'});
 					}
-					if (this.endDate !== Infinity && year >= this.endDate.getFullYear()) {
+					if (this.endDate !== Infinity && year >= this.endDate.getUTCFullYear()) {
 						this.picker.find('.next').css({visibility: 'hidden'});
 					} else {
 						this.picker.find('.next').css({visibility: 'visible'});
@@ -1200,17 +1292,17 @@ function mergeKeys(objTo, objFrom, keys) {
 						break;
 					case 'span':
 						if (!target.is('.disabled')) {
-							this.viewDate.setDate(1);
+							this.viewDate.setUTCDate(1);
 							if (target.is('.month')) {
 								var month = target.parent().find('span').index(target);
-								this.viewDate.setMonth(month);
+								this.viewDate.setUTCMonth(month);
 								this.element.trigger({
 									type: 'changeMonth',
 									date: this.viewDate
 								});
 							} else {
 								var year = parseInt(target.text(), 10)||0;
-								this.viewDate.setFullYear(year);
+								this.viewDate.setUTCFullYear(year);
 								this.element.trigger({
 									type: 'changeYear',
 									date: this.viewDate
@@ -1223,8 +1315,8 @@ function mergeKeys(objTo, objFrom, keys) {
 					case 'td':
 						if (target.is('.day') && !target.is('.disabled')){
 							var day = parseInt(target.text(), 10)||1;
-							var year = this.viewDate.getFullYear(),
-								month = this.viewDate.getMonth();
+							var year = this.viewDate.getUTCFullYear(),
+								month = this.viewDate.getUTCMonth();
 							if (target.is('.old')) {
 								if (month == 0) {
 									month = 11;
@@ -1240,8 +1332,8 @@ function mergeKeys(objTo, objFrom, keys) {
 									month += 1;
 								}
 							}
-							this.date = new Date(year, month, day,0,0,0,0);
-							this.viewDate = new Date(year, month, day,0,0,0,0);
+							this.date = UTCDate(year, month, day,0,0,0,0);
+							this.viewDate = UTCDate(year, month, day,0,0,0,0);
 							this.fill();
 							this.setValue();
 							this.element.trigger({
@@ -1257,7 +1349,7 @@ function mergeKeys(objTo, objFrom, keys) {
 							if (element) {
 								element.change();
 								if (this.autoclose) {
-									element.blur();
+									this.hide();
 								}
 							}
 						}
@@ -1266,16 +1358,11 @@ function mergeKeys(objTo, objFrom, keys) {
 			}
 		},
 
-		mousedown: function(e){
-			e.stopPropagation();
-			e.preventDefault();
-		},
-
 		moveMonth: function(date, dir){
 			if (!dir) return date;
 			var new_date = new Date(date.valueOf()),
-				day = new_date.getDate(),
-				month = new_date.getMonth(),
+				day = new_date.getUTCDate(),
+				month = new_date.getUTCMonth(),
 				mag = Math.abs(dir),
 				new_month, test;
 			dir = dir > 0 ? 1 : -1;
@@ -1283,12 +1370,12 @@ function mergeKeys(objTo, objFrom, keys) {
 				test = dir == -1
 					// If going back one month, make sure month is not current month
 					// (eg, Mar 31 -> Feb 31 == Feb 28, not Mar 02)
-					? function(){ return new_date.getMonth() == month; }
+					? function(){ return new_date.getUTCMonth() == month; }
 					// If going forward one month, make sure month is as expected
 					// (eg, Jan 31 -> Feb 31 == Feb 28, not Mar 02)
-					: function(){ return new_date.getMonth() != new_month; };
+					: function(){ return new_date.getUTCMonth() != new_month; };
 				new_month = month + dir;
-				new_date.setMonth(new_month);
+				new_date.setUTCMonth(new_month);
 				// Dec -> Jan (12) or Jan -> Dec (-1) -- limit expected date to 0-11
 				if (new_month < 0 || new_month > 11)
 					new_month = (new_month + 12) % 12;
@@ -1298,15 +1385,15 @@ function mergeKeys(objTo, objFrom, keys) {
 					// ...which might decrease the day (eg, Jan 31 to Feb 28, etc)...
 					new_date = this.moveMonth(new_date, dir);
 				// ...then reset the day, keeping it in the new month
-				new_month = new_date.getMonth();
-				new_date.setDate(day);
-				test = function(){ return new_month != new_date.getMonth(); };
+				new_month = new_date.getUTCMonth();
+				new_date.setUTCDate(day);
+				test = function(){ return new_month != new_date.getUTCMonth(); };
 			}
 			// Common date-resetting loop -- if date is beyond end of month, make it
 			// end of month
 			while (test()){
-				new_date.setDate(--day);
-				new_date.setMonth(new_month);
+				new_date.setUTCDate(--day);
+				new_date.setUTCMonth(new_month);
 			}
 			return new_date;
 		},
@@ -1335,7 +1422,7 @@ function mergeKeys(objTo, objFrom, keys) {
 					break;
 				case 37: // left
 				case 39: // right
-                    if (!this.keyboardNavigation) break;
+					if (!this.keyboardNavigation) break;
 					dir = e.keyCode == 37 ? -1 : 1;
 					if (e.ctrlKey){
 						newDate = this.moveYear(this.date, dir);
@@ -1345,9 +1432,9 @@ function mergeKeys(objTo, objFrom, keys) {
 						newViewDate = this.moveMonth(this.viewDate, dir);
 					} else {
 						newDate = new Date(this.date);
-						newDate.setDate(this.date.getDate() + dir);
+						newDate.setUTCDate(this.date.getUTCDate() + dir);
 						newViewDate = new Date(this.viewDate);
-						newViewDate.setDate(this.viewDate.getDate() + dir);
+						newViewDate.setUTCDate(this.viewDate.getUTCDate() + dir);
 					}
 					if (this.dateWithinRange(newDate)){
 						this.date = newDate;
@@ -1360,7 +1447,7 @@ function mergeKeys(objTo, objFrom, keys) {
 					break;
 				case 38: // up
 				case 40: // down
-                    if (!this.keyboardNavigation) break;
+					if (!this.keyboardNavigation) break;
 					dir = e.keyCode == 38 ? -1 : 1;
 					if (e.ctrlKey){
 						newDate = this.moveYear(this.date, dir);
@@ -1370,9 +1457,9 @@ function mergeKeys(objTo, objFrom, keys) {
 						newViewDate = this.moveMonth(this.viewDate, dir);
 					} else {
 						newDate = new Date(this.date);
-						newDate.setDate(this.date.getDate() + dir * 7);
+						newDate.setUTCDate(this.date.getUTCDate() + dir * 7);
 						newViewDate = new Date(this.viewDate);
-						newViewDate.setDate(this.viewDate.getDate() + dir * 7);
+						newViewDate.setUTCDate(this.viewDate.getUTCDate() + dir * 7);
 					}
 					if (this.dateWithinRange(newDate)){
 						this.date = newDate;
@@ -1386,6 +1473,9 @@ function mergeKeys(objTo, objFrom, keys) {
 				case 13: // enter
 					this.hide();
 					e.preventDefault();
+					break;
+				case 9: // tab
+					this.hide();
 					break;
 			}
 			if (dateChanged){
@@ -1490,43 +1580,43 @@ function mergeKeys(objTo, objFrom, keys) {
 					dir = parseInt(part[1]);
 					switch(part[2]){
 						case 'd':
-							date.setDate(date.getDate() + dir);
+							date.setUTCDate(date.getUTCDate() + dir);
 							break;
 						case 'm':
 							date = Datepicker.prototype.moveMonth.call(Datepicker.prototype, date, dir);
 							break;
 						case 'w':
-							date.setDate(date.getDate() + dir * 7);
+							date.setUTCDate(date.getUTCDate() + dir * 7);
 							break;
 						case 'y':
 							date = Datepicker.prototype.moveYear.call(Datepicker.prototype, date, dir);
 							break;
 					}
 				}
-				return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0);
+				return UTCDate(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0);
 			}
 			var parts = date && date.match(this.nonpunctuation) || [],
 				date = new Date(),
 				parsed = {},
 				setters_order = ['yyyy', 'yy', 'M', 'MM', 'm', 'mm', 'd', 'dd'],
 				setters_map = {
-					yyyy: function(d,v){ return d.setFullYear(v); },
-					yy: function(d,v){ return d.setFullYear(2000+v); },
+					yyyy: function(d,v){ return d.setUTCFullYear(v); },
+					yy: function(d,v){ return d.setUTCFullYear(2000+v); },
 					m: function(d,v){
 						v -= 1;
 						while (v<0) v += 12;
 						v %= 12;
-						d.setMonth(v);
-						while (d.getMonth() != v)
-							d.setDate(d.getDate()-1);
+						d.setUTCMonth(v);
+						while (d.getUTCMonth() != v)
+							d.setUTCDate(d.getUTCDate()-1);
 						return d;
 					},
-					d: function(d,v){ return d.setDate(v); }
+					d: function(d,v){ return d.setUTCDate(v); }
 				},
 				val, filtered, part;
 			setters_map['M'] = setters_map['MM'] = setters_map['mm'] = setters_map['m'];
 			setters_map['dd'] = setters_map['d'];
-			date = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0);
+			date = UTCDate(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0);
 			if (parts.length == format.parts.length) {
 				for (var i=0, cnt = format.parts.length; i < cnt; i++) {
 					val = parseInt(parts[i], 10);
@@ -1563,12 +1653,12 @@ function mergeKeys(objTo, objFrom, keys) {
 		},
 		formatDate: function(date, format, language){
 			var val = {
-				d: date.getDate(),
-				m: date.getMonth() + 1,
-				M: dates[language].monthsShort[date.getMonth()],
-				MM: dates[language].months[date.getMonth()],
-				yy: date.getFullYear().toString().substring(2),
-				yyyy: date.getFullYear()
+				d: date.getUTCDate(),
+				m: date.getUTCMonth() + 1,
+				M: dates[language].monthsShort[date.getUTCMonth()],
+				MM: dates[language].months[date.getUTCMonth()],
+				yy: date.getUTCFullYear().toString().substring(2),
+				yyyy: date.getUTCFullYear()
 			};
 			val.dd = (val.d < 10 ? '0' : '') + val.d;
 			val.mm = (val.m < 10 ? '0' : '') + val.m;
@@ -1610,5 +1700,7 @@ function mergeKeys(objTo, objFrom, keys) {
 								'</table>'+
 							'</div>'+
 						'</div>';
-
+                        
+    $.fn.datepicker.DPGlobal = DPGlobal;
+    
 }( window.jQuery );

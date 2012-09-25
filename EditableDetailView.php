@@ -8,7 +8,7 @@
  * @link https://github.com/vitalets/yii-bootstrap-editable
  * @copyright Copyright &copy; Vitaliy Potapov 2012
  * @license http://www.opensource.org/licenses/bsd-license.php New BSD License
- * @version 0.1.0
+ * @version 1.0.0
  */
  
 Yii::import('ext.editable.EditableField');
@@ -22,17 +22,11 @@ class EditableDetailView extends CDetailView
     //set bootstrap css
     public $htmlOptions = array('class'=> 'table table-bordered table-striped table-hover table-condensed');
 
-    protected $originalNullDisplay = null;
-
     public function init()
     {
         if (!$this->data instanceof CModel) {
             throw new CException('Property "data" should be of CModel class.');
         }
-
-        //we need set nullDisplay = '' to render correctly. but save original value to pass into js emptytext param
-        $this->originalNullDisplay = ($this->nullDisplay === null) ? Yii::t('zii', 'Not set') : $this->nullDisplay;
-        $this->nullDisplay = '';
 
         parent::init();
     }
@@ -44,9 +38,9 @@ class EditableDetailView extends CDetailView
 
         //if name not defined or it is not safe --> not editable
         $isEditable = !empty($options['name']) && $this->data->isAttributeSafe($options['name']);
-       
-        if ($isEditable) {
-            //convert to array
+
+        if ($isEditable) {    
+            //ensure $options['editable'] is array
             if(!array_key_exists('editable', $options) || !is_array($options['editable'])) $options['editable'] = array();
 
             //take common url
@@ -57,17 +51,17 @@ class EditableDetailView extends CDetailView
             $editableOptions = CMap::mergeArray($options['editable'], array(
                 'model'     => $this->data,
                 'attribute' => $options['name'],
-                'emptytext' => $this->originalNullDisplay,
+                'emptytext' => ($this->nullDisplay === null) ? Yii::t('zii', 'Not set') : strip_tags($this->nullDisplay),
             ));
-
+            
             //if value in detailview options provided, set text directly
-            if(array_key_exists('value', $options)) {
+            if(array_key_exists('value', $options) && $options['value'] !== null) {
                 $editableOptions['text'] = $templateData['{value}'];
                 $editableOptions['encode'] = false;
             }
 
             $templateData['{value}'] = $this->controller->widget('EditableField', $editableOptions, true);
-        }
+        } 
 
         parent::renderItem($options, $templateData);
     }
