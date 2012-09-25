@@ -6,7 +6,7 @@ Includes three widgets and one component that together give you extremely fast a
 
 ## Demo & Documentation
 
-http://demopage.ru/yii-bootstrap-editable
+**http://ybe.demopage.ru**
 
 ## Contributing
 Please make all pull requests against `dev` branch. Your feedback / contribution is very appreciated.
