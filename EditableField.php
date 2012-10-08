@@ -277,14 +277,15 @@ class EditableField extends CWidget
             $bootstrap->registerCorePlugins(); //enable bootstrap js if needed
         }
 
-        $assetsUrl = Yii::app()->getAssetManager()->publish(Yii::getPathOfAlias('ext.editable.assets'), false, 1); //publish excluding datepicker locales
+        Yii::setPathOfAlias("editable", dirname(__FILE__));
+        $assetsUrl = Yii::app()->getAssetManager()->publish(Yii::getPathOfAlias('editable.assets'), false, 1); //publish excluding datepicker locales
         Yii::app()->getClientScript()->registerCssFile($assetsUrl . '/css/bootstrap-editable.css');
         Yii::app()->clientScript->registerScriptFile($assetsUrl . '/js/bootstrap-editable.js', CClientScript::POS_END);
 
         //include locale for datepicker
         if ($this->type == 'date' && $this->language && substr($this->language, 0, 2) != 'en') {
              //todo: check compare dp locale name with yii's
-             $localesUrl = Yii::app()->getAssetManager()->publish(Yii::getPathOfAlias('ext.editable.assets.js.locales'));
+             $localesUrl = Yii::app()->getAssetManager()->publish(Yii::getPathOfAlias('editable.assets.js.locales'));
              Yii::app()->clientScript->registerScriptFile($localesUrl . '/bootstrap-datepicker.'. str_replace('_', '-', $this->language).'.js', CClientScript::POS_END);
         }
     }
