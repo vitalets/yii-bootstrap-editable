@@ -230,9 +230,9 @@
                 return;
             }
 
-            /*jslint eqeqeq: false*/
+            /*jshint eqeqeq: false*/
             if (value == this.value) {
-            /*jslint eqeqeq: true*/
+            /*jshint eqeqeq: true*/
                 //if value not changed --> do nothing, simply hide popover
                 this.hide();
             } else {
