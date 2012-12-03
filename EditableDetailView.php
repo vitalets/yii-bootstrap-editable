@@ -33,16 +33,10 @@ class EditableDetailView extends CDetailView
 
     protected function renderItem($options, $templateData)
     {
-        //if editable set to false --> not editable
-        $isEditable = array_key_exists('editable', $options) && $options['editable'] !== false;
-
-        //if name not defined or it is not safe --> not editable
-        $isEditable = !empty($options['name']) && $this->data->isAttributeSafe($options['name']);
-
-        if ($isEditable) {    
+        if (!isset($options['editable']) || (isset($options['editable']) && $options['editable'] !== false)) {    
             //ensure $options['editable'] is array
-            if(!array_key_exists('editable', $options) || !is_array($options['editable'])) $options['editable'] = array();
-
+            if(!isset($options['editable'])) $options['editable'] = array();            
+            
             //take common url
             if (!array_key_exists('url', $options['editable'])) {
                 $options['editable']['url'] = $this->url;
@@ -60,7 +54,12 @@ class EditableDetailView extends CDetailView
                 $editableOptions['encode'] = false;
             }
 
-            $templateData['{value}'] = $this->controller->widget('EditableField', $editableOptions, true);
+            $editable = $this->controller->createWidget('EditableField', $editableOptions);
+            if($editable->enabled) {
+                ob_start();
+                $editable->run();
+                $templateData['{value}'] = ob_get_clean();
+            }
         } 
 
         parent::renderItem($options, $templateData);

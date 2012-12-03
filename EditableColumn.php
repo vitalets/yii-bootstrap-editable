@@ -21,6 +21,9 @@ class EditableColumn extends CDataColumn
 
     //flag to render client script only once
     protected $isScriptRendered = false;
+    
+    //internal enabled flag
+    private $isEnabled = false;
 
     public function init()
     {
@@ -33,14 +36,21 @@ class EditableColumn extends CDataColumn
 
         parent::init();
         
-        if($this->isEditable($this->grid->dataProvider->model)) {
-            $this->attachAjaxUpdateEvent();
-        }
+        //set isEditable flag by first row of data
+        $data = $this->grid->dataProvider->getData();
+        if(isset($data[0])) {
+            list($model, $attribute) = EditableField::resolveModel($data[0], $this->name);
+            $this->isEnabled = $model->isAttributeSafe($attribute) && (!array_key_exists('enabled', $this->editable) || $this->editable['enabled'] === true);
+            if($this->isEnabled) {
+                $this->attachAjaxUpdateEvent();
+            }
+        }       
     }
 
     protected function renderDataCellContent($row, $data)
     {
-        if(!$this->isEditable($data)) {
+        //if not enabled use normal render
+        if(!$this->isEnabled) {
             parent::renderDataCellContent($row, $data);
             return; 
         }
@@ -102,15 +112,5 @@ class EditableColumn extends CDataColumn
         $this->grid->afterAjaxUpdate = "js: function(id, data) {
             $trigger $orig
         }";
-    }
-    
-    /**
-    * determines wether column currently editable or not
-    * 
-    * @param mixed $model
-    */
-    protected function isEditable($model)
-    {
-         return $model->isAttributeSafe($this->name) && (!array_key_exists('enabled', $this->editable) || $this->editable['enabled'] === true);
     }
 }

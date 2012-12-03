@@ -69,14 +69,24 @@ class EditableField extends CWidget
         if (!$this->model) {
             throw new CException('Parameter "model" should be provided for Editable');
         }
-        if (!$this->attribute) {
-            throw new CException('Parameter "attribute" should be provided for Editable');
+        if (!$this->attribute || !is_string($this->attribute)) {
+            throw new CException('String parameter "attribute" should be provided for Editable');
         }
+        
+        //resolve model and attribute if it is related model
+        list($this->model, $this->attribute) = self::resolveModel($this->model, $this->attribute);
+        
+        parent::init();
+        
+        //model can be set to false in resolveModel method 
+        if($this->model === false) {
+            $this->enabled = false;
+            return;
+        }
+        
         if (!$this->model->hasAttribute($this->attribute)) {
             throw new CException('Model "'.get_class($this->model).'" does not have attribute "'.$this->attribute.'"');
         }        
- 
-        parent::init();
                 
         if ($this->type === null) {
             $this->type = 'text';
@@ -318,5 +328,29 @@ class EditableField extends CWidget
     public function getSelector()
     {
         return get_class($this->model) . '_' . $this->attribute . ($this->model->primaryKey ? '_' . $this->model->primaryKey : '_new');
+    }
+    
+    /**
+    * check if attribute points to related model and resolve it
+    * 
+    * @param mixed $model
+    * @param mixed $attribute
+    */
+    public static function resolveModel($model, $attribute) 
+    {   
+        $explode = explode('.', $attribute);
+        if(count($explode) > 1) {
+            for($i = 0; $i < count($explode)-1; $i++) {
+                $name = $explode[$i];
+                if($model->$name instanceof CActiveRecord) {
+                    $model = $model->$name; 
+                } else {
+                    //related model not exist!
+                    return array(false, false);
+                }
+            } 
+            $attribute = $explode[$i];
+        }     
+        return array($model, $attribute);
     }
 }
