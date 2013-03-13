@@ -148,7 +148,7 @@
                 this.$element.popover({
                     trigger  :'manual',
                     placement:'top',
-                    content  :this.settings.loading
+                    html  :this.settings.loading
                 });
 
                 this.$element.data('popover').tip().addClass('editable-popover');
